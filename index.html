@@ -22,8 +22,11 @@
 <body>
     <canvas id="renderCanvas"></canvas>
     <script>
-        // ... (La classe VoxelChunk resta invariata) ...
-
+        /**
+         * @class VoxelChunk (Solo per la creazione della mesh sul thread principale)
+         * @description Questa versione semplificata di VoxelChunk si occupa solo della creazione della mesh
+         * una volta ricevuti i dati dei vertici dal Web Worker.
+         */
         class VoxelChunk {
             constructor(x, y, z, chunkSize, scene, meshData) {
                 this.chunkX = x;
@@ -73,10 +76,9 @@
          * @description Gestisce la generazione e il caricamento dinamico dei chunk.
          */
         class ChunkManager {
-            constructor(scene, chunkSize, regionChunks) {
+            constructor(scene, chunkSize) {
                 this.scene = scene;
                 this.chunkSize = chunkSize;
-                this.regionChunks = regionChunks;
                 this.chunks = new Map();
                 this.loadedRegionFiles = new Map();
                 this.worker = new Worker('./worker.js');
@@ -119,54 +121,50 @@
                     .then(arrayBuffer => {
                         this.loadedRegionFiles.set(regionKey, arrayBuffer);
                         console.log(`File regione ${fileName} caricato.`);
-                        
-                        const numberOfChunksInRegion = this.regionChunks * this.regionChunks * this.regionChunks;
-                        for(let i = 0; i < numberOfChunksInRegion; i++) {
-                            const chunkLocalX = i % this.regionChunks;
-                            const chunkLocalY = Math.floor(i / (this.regionChunks * this.regionChunks));
-                            const chunkLocalZ = Math.floor((i % (this.regionChunks * this.regionChunks)) / this.regionChunks);
-
-                            const globalChunkX = regionX * this.regionChunks + chunkLocalX;
-                            const globalChunkY = regionX * this.regionChunks + chunkLocalY; // Ho corretto, questo era regionX, deve essere regionY, ma usiamo la stessa per semplificare ora.
-                            const globalChunkZ = regionZ * this.regionChunks + chunkLocalZ;
-                            
-                            this.generateChunkFromRegion(globalChunkX, globalChunkY, globalChunkZ, i, arrayBuffer);
-                        }
+                        this.generateChunkFromRegion(regionX, 0, regionZ, arrayBuffer);
                     })
                     .catch(error => {
                         console.error(error.message);
                     });
             }
 
-            generateChunkFromRegion(globalChunkX, globalChunkY, globalChunkZ, chunkIndexInRegion, regionFileBuffer) {
-                const chunkKey = `${globalChunkX},${globalChunkY},${globalChunkZ}`;
+            // FUNZIONE AGGIORNATA
+            generateChunkFromRegion(chunkX, chunkY, chunkZ, regionFileBuffer) {
+                const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
                 if (this.chunks.has(chunkKey)) {
                     return;
                 }
                 
+                // Crea una copia del buffer per il trasferimento. Questo assicura che
+                // il worker riceva un oggetto valido e che l'originale non venga invalidato.
                 const bufferCopy = regionFileBuffer.slice(0);
 
                 this.worker.postMessage({
                     type: 'loadChunkFromRegion',
-                    chunkIndex: chunkIndexInRegion,
-                    chunkLocalX: globalChunkX, // Passiamo le coordinate globali del chunk al worker per la posizione
-                    chunkLocalY: globalChunkY,
-                    chunkLocalZ: globalChunkZ,
+                    chunkX,
+                    chunkY,
+                    chunkZ,
+                    chunkSize: this.chunkSize,
                     regionFileBuffer: bufferCopy
-                }, [bufferCopy]);
+                }, [bufferCopy]); // L'ArrayBuffer trasferito va nel secondo argomento.
             }
 
             updateChunks(playerPosition) {
-                const regionX = Math.floor(playerPosition.x / (this.chunkSize * this.regionChunks));
-                const regionZ = Math.floor(playerPosition.z / (this.chunkSize * this.regionChunks));
-
+                const playerChunkX = Math.floor(playerPosition.x / this.chunkSize);
+                const playerChunkZ = Math.floor(playerPosition.z / this.chunkSize);
                 const renderDistance = 1;
 
-                for (let x = regionX - renderDistance; x <= regionX + renderDistance; x++) {
-                    for (let z = regionZ - renderDistance; z <= regionZ + renderDistance; z++) {
-                        const regionKey = `${x},${z}`;
+                for (let x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
+                    for (let z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
+                        const regionX = Math.floor(x / 1);
+                        const regionZ = Math.floor(z / 1);
+
+                        const regionKey = `${regionX},${regionZ}`;
                         if (!this.loadedRegionFiles.has(regionKey)) {
-                            this.loadRegionFile(x, z);
+                            this.loadRegionFile(regionX, regionZ);
+                        } else {
+                            const regionFileBuffer = this.loadedRegionFiles.get(regionKey);
+                            this.generateChunkFromRegion(x, 0, z, regionFileBuffer);
                         }
                     }
                 }
@@ -178,17 +176,13 @@
 
         const createScene = function () {
             const scene = new BABYLON.Scene(engine);
-            const camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 50, 0), scene);
+            const camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 10, 0), scene);
             camera.setTarget(BABYLON.Vector3.Zero());
             camera.attachControl(canvas, true);
             camera.keysUp = [87];
             camera.keysDown = [83];
             camera.keysLeft = [65];
             camera.keysRight = [68];
-            camera.speed = 0.5;
-            camera.applyGravity = true;
-            camera.checkCollisions = true;
-            camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
 
             let isFlying = false;
             scene.actionManager = new BABYLON.ActionManager(scene);
@@ -210,8 +204,7 @@
             light.intensity = 0.7;
 
             const chunkSize = 32;
-            const regionChunks = 4;
-            const chunkManager = new ChunkManager(scene, chunkSize, regionChunks);
+            const chunkManager = new ChunkManager(scene, chunkSize);
 
             chunkManager.updateChunks(camera.position);
 
