@@ -192,9 +192,9 @@
                     regionFileBuffer: regionBuffer,
                     neighborBuffers: neighborBuffers,
                     chunkIndex,
-                    chunkLocalX,
-                    chunkLocalY,
-                    chunkLocalZ,
+                    chunkX: job.chunkX,
+                    chunkY: job.chunkY,
+                    chunkZ: job.chunkZ
                 }, [job.fromCache ? regionBuffer : regionBuffer.slice(), ...Object.values(neighborBuffers).map(b => b.slice())]);
             }
 
