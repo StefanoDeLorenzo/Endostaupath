@@ -2,11 +2,10 @@
 
 const CHUNK_SIZE = 32;
 const REGION_CHUNKS = 4;
-const CHUNK_SIZE_IN_BYTES = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 1;
 
 /**
  * @class VoxelReader
- * @description Si occupa di leggere i dati dei chunk da un buffer binario di una regione.
+ * @description Gestisce la lettura e il parsing dei file binari di regione.
  */
 class VoxelReader {
     constructor(regionBuffer) {
@@ -31,9 +30,10 @@ class VoxelReader {
         return header;
     }
 
-    getChunkData(chunkIndex) {
+    getChunkData(chunkLocalX, chunkLocalY, chunkLocalZ) {
+        const chunkIndex = chunkLocalX * REGION_CHUNKS * REGION_CHUNKS + chunkLocalY * REGION_CHUNKS + chunkLocalZ;
         if (chunkIndex < 0 || chunkIndex >= this.header.numChunks) {
-            throw new Error(`Indice del chunk richiesto (${chunkIndex}) è fuori dai limiti.`);
+            return null;
         }
         
         const indexTableOffset = 4 + 1 + 3 + 4;
@@ -51,44 +51,56 @@ class VoxelReader {
 /**
  * @function getVoxel
  * @description Ottiene il tipo di blocco in una data posizione, considerando anche i chunk vicini.
- * @param {Object} voxelData - Oggetto contenente i dati del chunk corrente e dei vicini.
- * @param {number} x - Coordinata locale X (da 0 a CHUNK_SIZE-1).
- * @param {number} y - Coordinata locale Y (da 0 a CHUNK_SIZE-1).
- * @param {number} z - Coordinata locale Z (da 0 a CHUNK_SIZE-1).
+ * @param {Object} context - Contesto contenente i dati delle regioni.
+ * @param {number} x - Coordinata globale X del voxel.
+ * @param {number} y - Coordinata globale Y del voxel.
+ * @param {number} z - Coordinata globale Z del voxel.
  * @returns {number} Il tipo di blocco.
  */
-function getVoxel(voxelData, x, y, z) {
-    // Se la posizione è all'interno del chunk corrente, la recupero
-    if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
-        return voxelData.chunkData[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z];
+function getVoxel(context, x, y, z) {
+    const chunkX = Math.floor(x / CHUNK_SIZE);
+    const chunkY = Math.floor(y / CHUNK_SIZE);
+    const chunkZ = Math.floor(z / CHUNK_SIZE);
+
+    const regionX = Math.floor(chunkX / REGION_CHUNKS);
+    const regionZ = Math.floor(chunkZ / REGION_CHUNKS);
+
+    const chunkLocalX = (chunkX % REGION_CHUNKS + REGION_CHUNKS) % REGION_CHUNKS;
+    const chunkLocalY = (chunkY % REGION_CHUNKS + REGION_CHUNKS) % REGION_CHUNKS;
+    const chunkLocalZ = (chunkZ % REGION_CHUNKS + REGION_CHUNKS) % REGION_CHUNKS;
+
+    const regionKey = `${regionX},${regionZ}`;
+    const regionReader = context.regionReaders[regionKey];
+
+    if (!regionReader) {
+        return 0; // Aria se la regione non esiste
     }
 
-    // Se la posizione è fuori dal chunk corrente, calcolo il vicino
-    const neighborX = Math.floor(x / CHUNK_SIZE);
-    const neighborY = Math.floor(y / CHUNK_SIZE);
-    const neighborZ = Math.floor(z / CHUNK_SIZE);
-    
-    const localX = (x % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
-    const localY = (y % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
-    const localZ = (z % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+    const chunkData = regionReader.getChunkData(chunkLocalX, chunkLocalY, chunkLocalZ);
 
-    const neighborKey = `${neighborX},${neighborY},${neighborZ}`;
-    const neighborChunkData = voxelData.neighborBuffers[neighborKey];
-    
-    if (neighborChunkData) {
-        return neighborChunkData[localX * CHUNK_SIZE * CHUNK_SIZE + localY * CHUNK_SIZE + localZ];
+    if (!chunkData) {
+        return 0; // Aria se il chunk non esiste
     }
+    
+    const voxelLocalX = (x % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+    const voxelLocalY = (y % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+    const voxelLocalZ = (z % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
 
-    return 0; // Aria se il vicino non è disponibile
+    const voxelIndex = voxelLocalX * CHUNK_SIZE * CHUNK_SIZE + voxelLocalY * CHUNK_SIZE + voxelLocalZ;
+
+    return chunkData[voxelIndex];
 }
 
 /**
  * @function getMeshData
  * @description Genera i dati della mesh per un dato chunk.
- * @param {Object} voxelData - Oggetto contenente i dati del chunk corrente e dei vicini.
+ * @param {Object} context - Contesto contenente i dati delle regioni.
+ * @param {number} chunkX - Coordinata X del chunk.
+ * @param {number} chunkY - Coordinata Y del chunk.
+ * @param {number} chunkZ - Coordinata Z del chunk.
  * @returns {Object} Un oggetto contenente posizioni, indici, normali e colori.
  */
-function getMeshData(voxelData) {
+function getMeshData(context, chunkX, chunkY, chunkZ) {
     const positions = [];
     const indices = [];
     const normals = [];
@@ -116,16 +128,24 @@ function getMeshData(voxelData) {
         [0, 1, 0], [0, -1, 0]
     ];
 
+    const startX = chunkX * CHUNK_SIZE;
+    const startY = chunkY * CHUNK_SIZE;
+    const startZ = chunkZ * CHUNK_SIZE;
+
     for (let x = 0; x < CHUNK_SIZE; x++) {
         for (let y = 0; y < CHUNK_SIZE; y++) {
             for (let z = 0; z < CHUNK_SIZE; z++) {
-                const blockType = getVoxel(voxelData, x, y, z);
+                const globalX = startX + x;
+                const globalY = startY + y;
+                const globalZ = startZ + z;
+
+                const blockType = getVoxel(context, globalX, globalY, globalZ);
                 if (blockType === 0) continue;
 
                 for (let i = 0; i < neighborOffsets.length; i++) {
                     const [dx, dy, dz] = neighborOffsets[i];
                     
-                    const neighborType = getVoxel(voxelData, x + dx, y + dy, z + dz);
+                    const neighborType = getVoxel(context, globalX + dx, globalY + dy, globalZ + dz);
                     if (neighborType === 0) {
                         const face = faceData[i];
                         const faceColor = materialColors[blockType];
@@ -153,18 +173,22 @@ function getMeshData(voxelData) {
 
 
 self.onmessage = (event) => {
-    const { type, regionFileBuffer, neighborBuffers, chunkIndex, chunkX, chunkY, chunkZ } = event.data;
+    const { type, regionBuffers, chunkX, chunkY, chunkZ } = event.data;
 
     if (type === 'loadChunkFromRegion') {
-        const reader = new VoxelReader(regionFileBuffer);
-        const chunkData = reader.getChunkData(chunkIndex);
-
-        const newNeighborBuffers = {};
-        for (const key in neighborBuffers) {
-            newNeighborBuffers[key] = new Uint8Array(neighborBuffers[key]);
+        const regionReaders = {};
+        for (const key in regionBuffers) {
+            regionReaders[key] = new VoxelReader(regionBuffers[key]);
         }
+
+        const context = {
+            regionReaders,
+            chunkX,
+            chunkY,
+            chunkZ
+        };
         
-        const { positions, indices, normals, colors } = getMeshData({ chunkData, neighborBuffers: newNeighborBuffers });
+        const { positions, indices, normals, colors } = getMeshData(context, chunkX, chunkY, chunkZ);
         
         self.postMessage({
             type: 'chunkGenerated',
