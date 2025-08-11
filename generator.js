@@ -49,7 +49,7 @@ class RegionFileManager {
                     dataView.setUint32(indexTableOffset + (chunkLocalX * regionChunks * regionChunks + chunkLocalY * regionChunks + chunkLocalZ) * indexEntrySize + 4, chunkSizeInBytes, true);
                     
                     const chunkX = regionX * regionChunks + chunkLocalX;
-                    const chunkY = regionChunks * regionChunks + chunkLocalY; // Aggiustato per mostrare più chunk verticalmente
+                    const chunkY = chunkLocalY;
                     const chunkZ = regionZ * regionChunks + chunkLocalZ;
                     
                     for (let x = 0; x < chunkSize; x++) {
@@ -58,18 +58,27 @@ class RegionFileManager {
                                 const globalX = chunkX * chunkSize + x;
                                 const globalY = chunkY * chunkSize + y;
                                 const globalZ = chunkZ * chunkSize + z;
+                                
+                                const noiseValue = Math.sin(globalX * 0.05) * 10 + Math.cos(globalZ * 0.05) * 10;
+                                const baseHeight = Math.floor(64 + noiseValue);
+                                
+                                let blockType = 0; // Air by default
 
-                                const baseHeight = Math.floor(globalY / 8 + Math.sin(globalX * 0.05) * 2 + Math.cos(globalZ * 0.05) * 2);
-
-                                if (y + chunkY*chunkSize < baseHeight - 2) {
-                                    voxelDataArray[dataIndex] = 3;
-                                } else if (y + chunkY*chunkSize < baseHeight) {
-                                    voxelDataArray[dataIndex] = 1;
-                                } else if (y + chunkY*chunkSize === baseHeight) {
-                                    voxelDataArray[dataIndex] = 2;
-                                } else {
-                                    voxelDataArray[dataIndex] = 0;
+                                if (globalY < baseHeight - 4) {
+                                    blockType = 3; // Stone
+                                } else if (globalY < baseHeight) {
+                                    blockType = 1; // Dirt
+                                } else if (globalY === baseHeight) {
+                                    blockType = 2; // Grass
                                 }
+
+                                if (blockType === 2) {
+                                    if (x > chunkSize / 4 && x < chunkSize * 3 / 4 && z > chunkSize / 4 && z < chunkSize * 3 / 4 && Math.random() < 0.005) {
+                                         blockType = 4; // Tree trunk (example)
+                                    }
+                                }
+
+                                voxelDataArray[dataIndex] = blockType;
                                 dataIndex++;
                             }
                         }
