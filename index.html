@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Minecraft Procedural Mesh Scalable - Web Worker</title>
+    <style>
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <script>
+/**
+ * @class VoxelChunk (Solo per la creazione della mesh sul thread principale)
+ * @description Questa versione semplificata di VoxelChunk si occupa solo della creazione della mesh
+ * una volta ricevuti i dati dei vertici dal Web Worker.
+ */
+class VoxelChunk {
+    constructor(x, y, z, chunkSize, scene, meshData) {
+        this.chunkX = x;
+        this.chunkY = y;
+        this.chunkZ = z;
+        this.chunkSize = chunkSize;
+        this.scene = scene;
+        this.mesh = null;
+        this.material = null;
+        this.buildMesh(meshData); // Costruisce la mesh usando i dati ricevuti
+    }
+
+    buildMesh(meshData) {
+        const positions = meshData.positions;
+        const indices = meshData.indices;
+        const normals = meshData.normals;
+        const colors = meshData.colors;
+
+        this.mesh = new BABYLON.Mesh(`voxelChunk_${this.chunkX}_${this.chunkY}_${this.chunkZ}`, this.scene);
+        const vertexData = new BABYLON.VertexData();
+
+        vertexData.positions = positions;
+        vertexData.indices = indices;
+        vertexData.normals = normals;
+        vertexData.colors = colors;
+
+        vertexData.applyToMesh(this.mesh);
+        this.mesh.checkCollisions = true;
+
+        this.mesh.position.x = this.chunkX * this.chunkSize - (this.chunkSize / 2) + 0.5;
+        this.mesh.position.y = this.chunkY * this.chunkSize - (this.chunkSize / 2) + 0.5;
+        this.mesh.position.z = this.chunkZ * this.chunkSize - (this.chunkSize / 2) + 0.5;
+
+        this.material = new BABYLON.StandardMaterial("chunkMaterial", this.scene);
+        this.material.useVertexColors = true;
+        this.material.backFaceCulling = true;
+        this.mesh.material = this.material;
+    }
+
+    dispose() {
+        if (this.mesh) {
+            this.mesh.dispose();
+            this.mesh = null;
+        }
+        if (this.material) {
+            this.material.dispose();
+            this.material = null;
+        }
+    }
+}
+
+/**
+ * @class ChunkManager
+ * @description Gestisce il caricamento/scaricamento dei chunk e la comunicazione con il Web Worker.
+ * NOTA: La logica qui sotto non è più usata per il test di caricamento del file di regione.
+ * La lasciamo per riferimento e per un uso futuro.
+ */
+class ChunkManager {
+    constructor(scene, chunkSize) {
+        this.scene = scene;
+        this.chunkSize = chunkSize;
+        this.loadedChunks = new Map();
+        this.renderDistance = 10;
+        this.worker = new Worker('worker.js');
+        this.pendingChunks = new Map();
+
+        this.worker.onmessage = (event) => {
+            const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
+            if (type === 'chunkGenerated') {
+                const key = this.getChunkKey(chunkX, chunkY, chunkZ);
+                if (this.pendingChunks.has(key)) {
+                    const chunk = new VoxelChunk(chunkX, chunkY, chunkZ, this.chunkSize, this.scene, meshData);
+                    this.loadedChunks.set(key, chunk);
+                    this.pendingChunks.delete(key);
+                    console.log(`Chunk ${key} built on main thread.`);
+                }
+            }
+        };
+
+        this.worker.onerror = (error) => {
+            console.error("Web Worker error:", error);
+        };
+    }
+
+    getChunkKey(x, y, z) {
+        return `${x}_${y}_${z}`;
+    }
+
+    loadChunk(chunkX, chunkY, chunkZ) {
+        const key = this.getChunkKey(chunkX, chunkY, chunkZ);
+        if (!this.loadedChunks.has(key) && !this.pendingChunks.has(key)) {
+            console.log(`Requesting chunk: ${key} from worker.`);
+            this.pendingChunks.set(key, true);
+            this.worker.postMessage({
+                type: 'generateChunk',
+                chunkX,
+                chunkY,
+                chunkZ,
+                chunkSize: this.chunkSize
+            });
+        }
+    }
+
+    unloadChunk(chunkX, chunkY, chunkZ) {
+        const key = this.getChunkKey(chunkX, chunkY, chunkZ);
+        if (this.loadedChunks.has(key)) {
+            console.log(`Unloading chunk: ${key}`);
+            const chunk = this.loadedChunks.get(key);
+            chunk.dispose();
+            this.loadedChunks.delete(key);
+        }
+        if (this.pendingChunks.has(key)) {
+            this.pendingChunks.delete(key);
+        }
+    }
+
+    updateChunks(playerPosition) {
+        const playerChunkX = Math.floor(playerPosition.x / this.chunkSize);
+        const playerChunkY = Math.floor(playerPosition.y / this.chunkSize);
+        const playerChunkZ = Math.floor(playerPosition.z / this.chunkSize);
+
+        const chunksToKeep = new Set();
+        const newLoadedChunks = new Map();
+
+        for (let xOffset = -this.renderDistance; xOffset <= this.renderDistance; xOffset++) {
+            for (let yOffset = -this.renderDistance; yOffset <= this.renderDistance; yOffset++) {
+                for (let zOffset = -this.renderDistance; zOffset <= this.renderDistance; zOffset++) {
+                    const chunkX = playerChunkX + xOffset;
+                    const chunkY = 0;
+                    const chunkZ = playerChunkZ + zOffset;
+                    chunksToKeep.add(this.getChunkKey(chunkX, chunkY, chunkZ));
+                }
+            }
+        }
+
+        chunksToKeep.forEach(key => {
+            if (this.loadedChunks.has(key)) {
+                newLoadedChunks.set(key, this.loadedChunks.get(key));
+            } else {
+                this.loadChunk(...key.split('_').map(Number));
+            }
+        });
+
+        this.loadedChunks.forEach((chunk, key) => {
+            if (!chunksToKeep.has(key)) {
+                this.unloadChunk(chunk.chunkX, chunk.chunkY, chunk.chunkZ);
+            }
+        });
+
+        this.loadedChunks = newLoadedChunks;
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    const canvas = document.getElementById("renderCanvas");
+    const engine = new BABYLON.Engine(canvas, true);
+
+    const createScene = function () {
+        const scene = new BABYLON.Scene(engine);
+        scene.clearColor = new BABYLON.Color3(0.5, 0.8, 0.9);
+
+        const camera = new BABYLON.FreeCamera("playerCamera", new BABYLON.Vector3(0, 15, 0), scene);
+        camera.setTarget(new BABYLON.Vector3(0, 14, 1));
+        camera.attachControl(canvas, true);
+
+        camera.speed = 0.5;
+        camera.angularSensibility = 5000; 
+
+        scene.collisionsEnabled = true;
+        camera.checkCollisions = true;
+        camera.applyGravity = true;
+
+        camera.ellipsoid = new BABYLON.Vector3(0.5, 2.75, 0.5); 
+        camera.ellipsoidOffset = new BABYLON.Vector3(0, -2.75, 0); 
+
+        camera.keysUp = [87];
+        camera.keysDown = [83];
+        camera.keysLeft = [65];
+        camera.keysRight = [68];
+
+        let isFlying = false;
+        scene.actionManager = new BABYLON.ActionManager(scene);
+        scene.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+                BABYLON.ActionManager.OnKeyDownTrigger,
+                function (evt) {
+                    if (evt.sourceEvent.key === 'v' || evt.sourceEvent.key === 'V') {
+                        isFlying = !isFlying;
+                        camera.applyGravity = !isFlying;
+                        camera.speed = isFlying ? 1.5 : 0.5;
+                        console.log("Flying mode:", isFlying ? "ON" : "OFF");
+                    }
+                }
+            )
+        );
+
+        const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+        light.intensity = 0.7;
+
+        return scene;
+    };
+
+    const scene = createScene();
+
+    engine.runRenderLoop(function () {
+        scene.render();
+    });
+
+    window.addEventListener("resize", function () {
+        engine.resize(); 
+    });
+
+    // ---------- NUOVA LOGICA DI TEST ----------
+    const chunkSize = 32;
+    const worker = new Worker('worker.js');
+    let chunkMesh = null; // Variabile per tenere traccia della mesh del chunk
+
+    worker.onmessage = (event) => {
+        const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
+        if (type === 'chunkGenerated') {
+            if (chunkMesh) {
+                chunkMesh.dispose(); // Rimuove la mesh precedente se esiste
+            }
+            const chunk = new VoxelChunk(chunkX, chunkY, chunkZ, chunkSize, scene, meshData);
+            chunkMesh = chunk.mesh; // Salva la nuova mesh
+            console.log(`Mesh per il chunk (${chunkX}, ${chunkY}, ${chunkZ}) caricata da file fittizio.`);
+        }
+    };
+    
+    // Test: richiedi il caricamento di un singolo chunk dal file di regione fittizio
+    worker.postMessage({
+        type: 'loadChunkFromRegion',
+        chunkX: 0,
+        chunkY: 0,
+        chunkZ: 0,
+        chunkSize: chunkSize
+    });
+});
+    </script>
+</body>
+</html>
