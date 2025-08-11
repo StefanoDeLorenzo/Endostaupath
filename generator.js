@@ -53,16 +53,20 @@ class RegionFileManager {
                     for (let x = 0; x < chunkSize; x++) {
                         for (let y = 0; y < chunkSize; y++) {
                             for (let z = 0; z < chunkSize; z++) {
+                                const globalX = regionX * regionChunks * chunkSize + chunkLocalX * chunkSize + x;
                                 const globalY = chunkLocalY * chunkSize + y;
-                                
+                                const globalZ = regionZ * regionChunks * chunkSize + chunkLocalZ * chunkSize + z;
+
                                 let blockType = 0; // Aria
+                                const heightVariation = Math.sin(globalX * 0.05) * 2 + Math.cos(globalZ * 0.05) * 2;
+                                const currentHeight = Math.floor(groundLevel + heightVariation);
                                 
-                                if (globalY === groundLevel) {
-                                    blockType = 2; // Erba
-                                } else if (globalY < groundLevel && globalY >= groundLevel - 4) {
-                                    blockType = 1; // Terra
-                                } else if (globalY < groundLevel - 4) {
+                                if (globalY < currentHeight - 4) {
                                     blockType = 3; // Pietra
+                                } else if (globalY < currentHeight) {
+                                    blockType = 1; // Terra
+                                } else if (globalY === currentHeight) {
+                                    blockType = 2; // Erba
                                 }
 
                                 voxelDataArray[dataIndex] = blockType;
