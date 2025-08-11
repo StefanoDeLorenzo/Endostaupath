@@ -23,9 +23,9 @@
     <canvas id="renderCanvas"></canvas>
     <script>
         /**
-         * @class VoxelChunk (Solo per la creazione della mesh sul thread principale)
-         * @description Questa versione semplificata di VoxelChunk si occupa solo della creazione della mesh
-         * una volta ricevuti i dati dei vertici dal Web Worker.
+         * @class VoxelChunk
+         * @description Si occupa della creazione della mesh sul thread principale, una volta ricevuti
+         * i dati dei vertici dal Web Worker.
          */
         class VoxelChunk {
             constructor(x, y, z, chunkSize, scene, meshData) {
@@ -109,6 +109,8 @@
                     return;
                 }
 
+                this.loadedRegionFiles.set(regionKey, 'loading'); // Segna la regione come in caricamento
+
                 const fileName = this.getRegionFileName(regionX, regionZ);
                 const url = `./regions/${fileName}`;
                 
@@ -130,7 +132,7 @@
                             const chunkLocalZ = Math.floor((i % (this.regionChunks * this.regionChunks)) / this.regionChunks);
 
                             const globalChunkX = regionX * this.regionChunks + chunkLocalX;
-                            const globalChunkY = chunkLocalY; // Ho corretto, questo era regionX, deve essere regionY, ma usiamo la stessa per semplificare ora.
+                            const globalChunkY = chunkLocalY;
                             const globalChunkZ = regionZ * this.regionChunks + chunkLocalZ;
                             
                             this.generateChunkFromRegion(globalChunkX, globalChunkY, globalChunkZ, i, arrayBuffer);
@@ -138,6 +140,7 @@
                     })
                     .catch(error => {
                         console.error(error.message);
+                        this.loadedRegionFiles.delete(regionKey); // Rimuove dalla mappa se il caricamento fallisce
                     });
             }
 
@@ -215,8 +218,6 @@
             const chunkSize = 32;
             const regionChunks = 4;
             const chunkManager = new ChunkManager(scene, chunkSize, regionChunks);
-
-            chunkManager.updateChunks(camera.position);
 
             scene.onBeforeRenderObservable.add(() => {
                 chunkManager.updateChunks(camera.position); 
