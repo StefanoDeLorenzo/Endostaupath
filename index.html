@@ -80,13 +80,15 @@
         }
 
         class ChunkManager {
-            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 4) {
+            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 2) {
                 this.scene = scene;
                 this.chunkSize = chunkSize;
                 this.regionChunks = regionChunks;
                 this.renderDistance = renderDistance;
                 this.chunksToLoad = new Set();
                 this.loadedChunks = new Set();
+                this.chunksCache = new Map();
+                this.cacheTimeout = 30000;
 
                 this.worker = worker;
                 this.worker.onmessage = this.handleWorkerMessage.bind(this);
@@ -107,6 +109,12 @@
                 const regionX = Math.floor(chunkX / this.regionChunks);
                 const regionZ = Math.floor(chunkZ / this.regionChunks);
                 return `r.${regionX}.${regionZ}.voxl`;
+            }
+
+            createChunkBoundingInfo(x, y, z) {
+                const min = new BABYLON.Vector3(x * this.chunkSize, y * this.chunkSize, z * this.chunkSize);
+                const max = new BABYLON.Vector3((x + 1) * this.chunkSize, (y + 1) * this.chunkSize, (z + 1) * this.chunkSize);
+                return new BABYLON.BoundingInfo(min, max);
             }
 
             addChunkToWorkerQueue(chunkX, chunkY, chunkZ) {
@@ -230,38 +238,64 @@
                 }
             }
 
-            updateChunks(cameraPosition) {
+            updateChunks(cameraPosition, camera) {
                 const { chunkX, chunkY, chunkZ } = this.getChunkCoordinates(cameraPosition);
 
                 const newVisibleChunks = new Set();
-                
-                // Distanza di rendering su X e Z (area di esplorazione)
                 const renderDistanceXZ = this.renderDistance;
-                
-                // Distanza di rendering su Y (altezza dinamica)
                 const renderDistanceY = 1;
-            
+                
                 for (let x = chunkX - renderDistanceXZ; x <= chunkX + renderDistanceXZ; x++) {
-                    // Carica solo i chunk vicini all'altezza del giocatore
                     for (let y = chunkY - renderDistanceY; y <= chunkY + renderDistanceY; y++) {
                         for (let z = chunkZ - renderDistanceXZ; z <= chunkZ + renderDistanceXZ; z++) {
                             const chunkKey = this.getChunkKey(x, y, z);
-                            newVisibleChunks.add(chunkKey);
-                            this.addChunkToWorkerQueue(x, y, z);
+                            
+                            // Esegui il frustum culling
+                            const chunkBoundingInfo = this.createChunkBoundingInfo(x, y, z);
+                            if (camera.isInFrustum(chunkBoundingInfo.boundingSphere)) {
+                                newVisibleChunks.add(chunkKey);
+                            }
                         }
                     }
                 }
-            
+
+                // Sposta i chunk non più visibili nella cache
                 for (const chunkKey of this.loadedChunks) {
                     if (!newVisibleChunks.has(chunkKey)) {
                         const chunk = chunks.get(chunkKey);
                         if (chunk) {
-                            chunk.dispose();
+                            this.chunksCache.set(chunkKey, { chunk, timestamp: Date.now() });
                             chunks.delete(chunkKey);
                         }
                     }
                 }
-            
+    
+                // Rimuovi i chunk dalla cache se sono scaduti
+                for (const [key, { chunk, timestamp }] of this.chunksCache.entries()) {
+                    if (Date.now() - timestamp > this.cacheTimeout) {
+                        chunk.dispose();
+                        this.chunksCache.delete(key);
+                    }
+                }
+    
+                // Aggiungi i nuovi chunk visibili alla coda
+                for (const chunkKey of newVisibleChunks) {
+                    const [x, y, z] = chunkKey.split(',').map(Number);
+                    if (!this.loadedChunks.has(chunkKey)) {
+                        // Controlla prima la cache
+                        if (this.chunksCache.has(chunkKey)) {
+                            const { chunk } = this.chunksCache.get(chunkKey);
+                            chunks.set(chunkKey, chunk);
+                            this.chunksCache.delete(chunkKey);
+                            this.loadedChunks.add(chunkKey);
+                        } else {
+                            // Se non è in cache, mettilo in coda per il worker
+                            this.addChunkToWorkerQueue(x, y, z);
+                        }
+                    }
+                }
+
+                // Aggiorna la lista dei chunk visibili
                 this.loadedChunks = newVisibleChunks;
             }
         }
@@ -305,13 +339,13 @@
             const chunkManager = new ChunkManager(scene, chunkSize, regionChunks);
 
             scene.onBeforeRenderObservable.add(() => {
-                chunkManager.updateChunks(camera.position); 
+                chunkManager.updateChunks(camera.position, camera); 
             });
 
-            return { scene, engine };
+            return { scene, engine, camera };
         };
 
-        const { scene, engine } = createScene();
+        const { scene, engine, camera } = createScene();
         engine.runRenderLoop(function () {
             scene.render();
         });
@@ -322,4 +356,3 @@
     </script>
 </body>
 </html>
-
