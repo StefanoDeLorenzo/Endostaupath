@@ -48,7 +48,6 @@
             }
             
             buildMesh(meshData) {
-                // Gestione del caso in cui il chunk è vuoto.
                 if (!meshData.positions || meshData.positions.length === 0) {
                     return;
                 }
@@ -101,7 +100,6 @@
                 this.worker.onmessage = this.handleWorkerMessage.bind(this);
             }
 
-            // Metodo per convertire le coordinate della telecamera in coordinate di chunk
             getChunkCoordinates(position) {
                 const chunkX = Math.floor(position.x / this.chunkSize);
                 const chunkY = Math.floor(position.y / this.chunkSize);
@@ -119,7 +117,6 @@
                 return `r.${regionX}.${regionZ}.voxl`;
             }
 
-            // Aggiungi un chunk alla coda per essere processato dal worker
             addChunkToWorkerQueue(chunkX, chunkY, chunkZ) {
                 const chunkKey = this.getChunkKey(chunkX, chunkY, chunkZ);
                 if (this.loadedChunks.has(chunkKey) || this.chunksToLoad.has(chunkKey)) {
@@ -127,9 +124,10 @@
                 }
 
                 this.chunksToLoad.add(chunkKey);
-                const regionKey = this.getRegionKey(chunkX, chunkZ);
                 
+                const regionKey = this.getRegionKey(chunkX, chunkZ);
                 const regionBuffer = regions.get(regionKey);
+
                 if (regionBuffer) {
                     workerQueue.push({ chunkX, chunkY, chunkZ, regionFileBuffer: regionBuffer, fromCache: true });
                     this.processWorkerQueue();
@@ -163,7 +161,6 @@
                     .catch(error => console.error(error));
             }
             
-            // Processa la coda del worker
             processWorkerQueue() {
                 if (isWorkerBusy || workerQueue.length === 0) {
                     return;
@@ -174,24 +171,42 @@
 
                 const regionKey = this.getRegionKey(job.chunkX, job.chunkZ);
                 const regionBuffer = regions.get(regionKey);
-                
-                // Corretto il calcolo delle coordinate locali per gestire i numeri negativi.
+
                 const chunkLocalX = (job.chunkX % this.regionChunks + this.regionChunks) % this.regionChunks;
                 const chunkLocalY = (job.chunkY % this.regionChunks + this.regionChunks) % this.regionChunks;
                 const chunkLocalZ = (job.chunkZ % this.regionChunks + this.regionChunks) % this.regionChunks;
 
                 const chunkIndex = chunkLocalX * this.regionChunks * this.regionChunks + chunkLocalY * this.regionChunks + chunkLocalZ;
                 
+                // Raccolgo i buffer dei chunk vicini per la mesh generation
+                const neighborBuffers = {};
+                for (let x = -1; x <= 1; x++) {
+                    for (let y = -1; y <= 1; y++) {
+                        for (let z = -1; z <= 1; z++) {
+                            if (x === 0 && y === 0 && z === 0) continue;
+                            const neighborChunkX = job.chunkX + x;
+                            const neighborChunkY = job.chunkY + y;
+                            const neighborChunkZ = job.chunkZ + z;
+                            const neighborRegionKey = this.getRegionKey(neighborChunkX, neighborChunkZ);
+                            const neighborBuffer = regions.get(neighborRegionKey);
+                            if (neighborBuffer) {
+                                const neighborKey = `${x},${y},${z}`;
+                                neighborBuffers[neighborKey] = neighborBuffer;
+                            }
+                        }
+                    }
+                }
+
                 this.worker.postMessage({
                     type: 'loadChunkFromRegion',
                     regionFileBuffer: regionBuffer,
+                    neighborBuffers: neighborBuffers,
                     chunkIndex,
                     chunkLocalX,
                     chunkLocalY,
                     chunkLocalZ,
-                }, [job.fromCache ? regionBuffer : regionBuffer.slice()]);
+                }, [job.fromCache ? regionBuffer : regionBuffer.slice(), ...Object.values(neighborBuffers).map(b => b.slice())]);
             }
-
 
             handleWorkerMessage(event) {
                 const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
@@ -211,7 +226,6 @@
                 }
             }
 
-            // Aggiorna i chunk visibili
             updateChunks(cameraPosition) {
                 const { chunkX, chunkY, chunkZ } = this.getChunkCoordinates(cameraPosition);
 
@@ -229,7 +243,6 @@
                     }
                 }
 
-                // Scarica i chunk non più visibili
                 for (const chunkKey of this.loadedChunks) {
                     if (!newVisibleChunks.has(chunkKey)) {
                         const chunk = chunks.get(chunkKey);
