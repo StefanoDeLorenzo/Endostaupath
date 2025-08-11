@@ -13,7 +13,7 @@ class RegionFileManager {
      */
     static generateRegionFile(regionX, regionZ) {
         const chunkSize = 32;
-        const regionChunks = 4; // Ogni regione è ora 4x4x4 chunk
+        const regionChunks = 4;
         const numberOfChunks = regionChunks * regionChunks * regionChunks;
         const indexEntrySize = 8;
         const headerSize = 4 + 1 + 3 + 4;
@@ -48,34 +48,21 @@ class RegionFileManager {
                     dataView.setUint32(indexTableOffset + (chunkLocalX * regionChunks * regionChunks + chunkLocalY * regionChunks + chunkLocalZ) * indexEntrySize, currentVoxelDataOffset, true);
                     dataView.setUint32(indexTableOffset + (chunkLocalX * regionChunks * regionChunks + chunkLocalY * regionChunks + chunkLocalZ) * indexEntrySize + 4, chunkSizeInBytes, true);
                     
-                    const chunkX = regionX * regionChunks + chunkLocalX;
-                    const chunkY = chunkLocalY;
-                    const chunkZ = regionZ * regionChunks + chunkLocalZ;
+                    const groundLevel = 64;
                     
                     for (let x = 0; x < chunkSize; x++) {
                         for (let y = 0; y < chunkSize; y++) {
                             for (let z = 0; z < chunkSize; z++) {
-                                const globalX = chunkX * chunkSize + x;
-                                const globalY = chunkY * chunkSize + y;
-                                const globalZ = chunkZ * chunkSize + z;
+                                const globalY = chunkLocalY * chunkSize + y;
                                 
-                                const noiseValue = Math.sin(globalX * 0.05) * 10 + Math.cos(globalZ * 0.05) * 10;
-                                const baseHeight = Math.floor(64 + noiseValue);
+                                let blockType = 0; // Aria
                                 
-                                let blockType = 0; // Air by default
-
-                                if (globalY < baseHeight - 4) {
-                                    blockType = 3; // Stone
-                                } else if (globalY < baseHeight) {
-                                    blockType = 1; // Dirt
-                                } else if (globalY === baseHeight) {
-                                    blockType = 2; // Grass
-                                }
-
-                                if (blockType === 2) {
-                                    if (x > chunkSize / 4 && x < chunkSize * 3 / 4 && z > chunkSize / 4 && z < chunkSize * 3 / 4 && Math.random() < 0.005) {
-                                         blockType = 4; // Tree trunk (example)
-                                    }
+                                if (globalY === groundLevel) {
+                                    blockType = 2; // Erba
+                                } else if (globalY < groundLevel && globalY >= groundLevel - 4) {
+                                    blockType = 1; // Terra
+                                } else if (globalY < groundLevel - 4) {
+                                    blockType = 3; // Pietra
                                 }
 
                                 voxelDataArray[dataIndex] = blockType;
