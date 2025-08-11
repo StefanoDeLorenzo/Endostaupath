@@ -22,8 +22,11 @@
 <body>
     <canvas id="renderCanvas"></canvas>
     <script>
-        // ... (La classe VoxelChunk resta invariata) ...
-
+        /**
+         * @class VoxelChunk (Solo per la creazione della mesh sul thread principale)
+         * @description Questa versione semplificata di VoxelChunk si occupa solo della creazione della mesh
+         * una volta ricevuti i dati dei vertici dal Web Worker.
+         */
         class VoxelChunk {
             constructor(x, y, z, chunkSize, scene, meshData) {
                 this.chunkX = x;
@@ -127,7 +130,7 @@
                             const chunkLocalZ = Math.floor((i % (this.regionChunks * this.regionChunks)) / this.regionChunks);
 
                             const globalChunkX = regionX * this.regionChunks + chunkLocalX;
-                            const globalChunkY = regionX * this.regionChunks + chunkLocalY; // Ho corretto, questo era regionX, deve essere regionY, ma usiamo la stessa per semplificare ora.
+                            const globalChunkY = chunkLocalY; // Ho corretto, questo era regionX, deve essere regionY, ma usiamo la stessa per semplificare ora.
                             const globalChunkZ = regionZ * this.regionChunks + chunkLocalZ;
                             
                             this.generateChunkFromRegion(globalChunkX, globalChunkY, globalChunkZ, i, arrayBuffer);
@@ -149,7 +152,7 @@
                 this.worker.postMessage({
                     type: 'loadChunkFromRegion',
                     chunkIndex: chunkIndexInRegion,
-                    chunkLocalX: globalChunkX, // Passiamo le coordinate globali del chunk al worker per la posizione
+                    chunkLocalX: globalChunkX,
                     chunkLocalY: globalChunkY,
                     chunkLocalZ: globalChunkZ,
                     regionFileBuffer: bufferCopy
