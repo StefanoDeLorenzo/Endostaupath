@@ -175,10 +175,11 @@
                 const regionKey = this.getRegionKey(job.chunkX, job.chunkZ);
                 const regionBuffer = regions.get(regionKey);
                 
-                const chunkLocalX = job.chunkX % this.regionChunks;
-                const chunkLocalY = job.chunkY % this.regionChunks;
-                const chunkLocalZ = job.chunkZ % this.regionChunks;
-                
+                // Corretto il calcolo delle coordinate locali per gestire i numeri negativi.
+                const chunkLocalX = (job.chunkX % this.regionChunks + this.regionChunks) % this.regionChunks;
+                const chunkLocalY = (job.chunkY % this.regionChunks + this.regionChunks) % this.regionChunks;
+                const chunkLocalZ = (job.chunkZ % this.regionChunks + this.regionChunks) % this.regionChunks;
+
                 const chunkIndex = chunkLocalX * this.regionChunks * this.regionChunks + chunkLocalY * this.regionChunks + chunkLocalZ;
                 
                 this.worker.postMessage({
@@ -285,10 +286,10 @@
                 chunkManager.updateChunks(camera.position); 
             });
 
-            return { scene, engine }; // Modificato per restituire sia la scena che il motore
+            return { scene, engine };
         };
 
-        const { scene, engine } = createScene(); // Cattura sia la scena che il motore
+        const { scene, engine } = createScene();
         engine.runRenderLoop(function () {
             scene.render();
         });
