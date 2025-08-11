@@ -164,14 +164,24 @@ self.onmessage = (event) => {
             newNeighborBuffers[key] = new Uint8Array(neighborBuffers[key]);
         }
         
-        const meshData = getMeshData({ chunkData, neighborBuffers: newNeighborBuffers });
+        const { positions, indices, normals, colors } = getMeshData({ chunkData, neighborBuffers: newNeighborBuffers });
         
         self.postMessage({
             type: 'chunkGenerated',
             chunkX,
             chunkY,
             chunkZ,
-            meshData
-        }, [meshData.positions.buffer, meshData.indices.buffer, meshData.normals.buffer, meshData.colors.buffer]);
+            meshData: {
+                positions: new Float32Array(positions),
+                indices: new Uint32Array(indices),
+                normals: new Float32Array(normals),
+                colors: new Float32Array(colors),
+            },
+        }, [
+            new Float32Array(positions).buffer,
+            new Uint32Array(indices).buffer,
+            new Float32Array(normals).buffer,
+            new Float32Array(colors).buffer,
+        ]);
     }
 };
