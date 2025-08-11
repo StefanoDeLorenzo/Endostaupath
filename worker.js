@@ -10,6 +10,12 @@ const REGION_CHUNKS = 4;
 class VoxelReader {
     constructor(regionBuffer) {
         this.regionBuffer = regionBuffer;
+        if (this.regionBuffer.byteLength === 0) {
+            this.isEmpty = true;
+            return;
+        }
+
+        this.isEmpty = false;
         this.dataView = new DataView(this.regionBuffer);
         this.header = this.parseHeader();
     }
@@ -31,6 +37,10 @@ class VoxelReader {
     }
 
     getChunkData(chunkLocalX, chunkLocalY, chunkLocalZ) {
+        if (this.isEmpty) {
+            return null;
+        }
+
         const chunkIndex = chunkLocalX * REGION_CHUNKS * REGION_CHUNKS + chunkLocalY * REGION_CHUNKS + chunkLocalZ;
         if (chunkIndex < 0 || chunkIndex >= this.header.numChunks) {
             return null;
@@ -72,8 +82,8 @@ function getVoxel(context, x, y, z) {
     const regionKey = `r.${regionX}.${regionZ}.voxl`;
     const regionReader = context.regionReaders[regionKey];
 
-    if (!regionReader) {
-        return 0; // Aria se la regione non esiste
+    if (!regionReader || regionReader.isEmpty) {
+        return 0; // Aria se la regione non esiste o è vuota
     }
 
     const chunkData = regionReader.getChunkData(chunkLocalX, chunkLocalY, chunkLocalZ);
