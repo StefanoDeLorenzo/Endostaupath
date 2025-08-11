@@ -1,235 +1,177 @@
 // worker.js
 
+const CHUNK_SIZE = 32;
+const REGION_CHUNKS = 4;
+const CHUNK_SIZE_IN_BYTES = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 1;
+
 /**
- * @class RegionFileManager
- * @description Gestisce la lettura e il parsing dei file binari di regione.
+ * @class VoxelReader
+ * @description Si occupa di leggere i dati dei chunk da un buffer binario di una regione.
  */
-class RegionFileManager {
-    constructor(buffer) {
-        this.buffer = buffer;
-        this.parsedData = this.parseRegionFile(buffer);
+class VoxelReader {
+    constructor(regionBuffer) {
+        this.regionBuffer = regionBuffer;
+        this.dataView = new DataView(this.regionBuffer);
+        this.header = this.parseHeader();
     }
 
-    parseRegionFile(buffer) {
-        const dataView = new DataView(buffer);
-        let offset = 0;
-
-        const magicNumber = new TextDecoder().decode(new Uint8Array(buffer, offset, 4));
-        offset += 4;
-
-        if (magicNumber !== "VOXL") {
-            console.error("Errore: il file non è in un formato corretto.");
-            return null;
+    parseHeader() {
+        const header = {};
+        const decoder = new TextDecoder();
+        header.magic = decoder.decode(this.regionBuffer.slice(0, 4));
+        if (header.magic !== 'VOXL') {
+            throw new Error("Formato del file di regione non valido.");
         }
-
-        const version = dataView.getUint8(offset);
-        offset += 1;
-
-        const chunkSizeX = dataView.getUint8(offset);
-        offset += 1;
-        const chunkSizeY = dataView.getUint8(offset);
-        offset += 1;
-        const chunkSizeZ = dataView.getUint8(offset);
-        offset += 1;
-
-        const numberOfChunks = dataView.getUint32(offset, true);
-        offset += 4;
-
-        console.log(`Magic Number: ${magicNumber}`);
-        console.log(`Versione: ${version}`);
-        console.log(`Grandezza Chunk: ${chunkSizeX}x${chunkSizeY}x${chunkSizeZ}`);
-        console.log(`Numero Chunks: ${numberOfChunks}`);
-
-        const chunkIndexTable = new Array(numberOfChunks);
-
-        for (let i = 0; i < numberOfChunks; i++) {
-            const chunkOffset = dataView.getUint32(offset, true);
-            offset += 4;
-            const chunkSize = dataView.getUint32(offset, true);
-            offset += 4;
-
-            chunkIndexTable[i] = {
-                offset: chunkOffset,
-                size: chunkSize
-            };
-        }
-
-        console.log("Tabella degli indici letta.");
-
-        return {
-            magicNumber,
-            version,
-            chunkSizeX,
-            chunkSizeY,
-            chunkSizeZ,
-            numberOfChunks,
-            chunkIndexTable,
-            voxelDataOffset: offset
-        };
+        let offset = 4;
+        header.version = this.dataView.getUint8(offset++);
+        header.chunkSizeX = this.dataView.getUint8(offset++);
+        header.chunkSizeY = this.dataView.getUint8(offset++);
+        header.chunkSizeZ = this.dataView.getUint8(offset++);
+        header.numChunks = this.dataView.getUint32(offset, true);
+        return header;
     }
 
     getChunkData(chunkIndex) {
-        if (!this.parsedData) {
-            console.error("Errore: file di regione non parsato.");
-            return null;
+        if (chunkIndex < 0 || chunkIndex >= this.header.numChunks) {
+            throw new Error(`Indice del chunk richiesto (${chunkIndex}) è fuori dai limiti.`);
         }
+        
+        const indexTableOffset = 4 + 1 + 3 + 4;
+        const indexEntrySize = 8;
+        const entryOffset = indexTableOffset + chunkIndex * indexEntrySize;
+        const voxelDataOffset = this.dataView.getUint32(entryOffset, true);
+        const voxelDataSize = this.dataView.getUint32(entryOffset + 4, true);
 
-        if (chunkIndex < 0 || chunkIndex >= this.parsedData.chunkIndexTable.length) {
-            console.error("Errore: indice del chunk richiesto è fuori dai limiti.");
-            return null;
-        }
-
-        const chunkInfo = this.parsedData.chunkIndexTable[chunkIndex];
-        const offset = this.parsedData.voxelDataOffset + chunkInfo.offset;
-        const size = chunkInfo.size;
-
-        if (size === 0) {
-            console.log(`Chunk ${chunkIndex} non contiene dati (dimensione 0).`);
-            return null;
-        }
-
-        const chunkData = new Uint8Array(this.buffer, offset, size);
-
-        console.log(`Dati del chunk ${chunkIndex} estratti. Dimensione: ${size} byte.`);
-        return chunkData;
+        const fullVoxelDataOffset = indexTableOffset + this.header.numChunks * indexEntrySize + voxelDataOffset;
+        
+        return new Uint8Array(this.regionBuffer, fullVoxelDataOffset, voxelDataSize);
     }
 }
 
+/**
+ * @function getVoxel
+ * @description Ottiene il tipo di blocco in una data posizione, considerando anche i chunk vicini.
+ * @param {Object} voxelData - Oggetto contenente i dati del chunk corrente e dei vicini.
+ * @param {number} x - Coordinata locale X (da 0 a CHUNK_SIZE-1).
+ * @param {number} y - Coordinata locale Y (da 0 a CHUNK_SIZE-1).
+ * @param {number} z - Coordinata locale Z (da 0 a CHUNK_SIZE-1).
+ * @returns {number} Il tipo di blocco.
+ */
+function getVoxel(voxelData, x, y, z) {
+    // Se la posizione è all'interno del chunk corrente, la recupero
+    if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) {
+        return voxelData.chunkData[x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z];
+    }
+
+    // Se la posizione è fuori dal chunk corrente, calcolo il vicino
+    const neighborX = Math.floor(x / CHUNK_SIZE);
+    const neighborY = Math.floor(y / CHUNK_SIZE);
+    const neighborZ = Math.floor(z / CHUNK_SIZE);
+    
+    const localX = (x % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+    const localY = (y % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+    const localZ = (z % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+
+    const neighborKey = `${neighborX},${neighborY},${neighborZ}`;
+    const neighborChunkData = voxelData.neighborBuffers[neighborKey];
+    
+    if (neighborChunkData) {
+        return neighborChunkData[localX * CHUNK_SIZE * CHUNK_SIZE + localY * CHUNK_SIZE + localZ];
+    }
+
+    return 0; // Aria se il vicino non è disponibile
+}
 
 /**
- * @class VoxelChunkWorker
- * @description Logica di generazione dei dati nel Web Worker per un singolo chunk.
+ * @function getMeshData
+ * @description Genera i dati della mesh per un dato chunk.
+ * @param {Object} voxelData - Oggetto contenente i dati del chunk corrente e dei vicini.
+ * @returns {Object} Un oggetto contenente posizioni, indici, normali e colori.
  */
-class VoxelChunkWorker {
-    constructor(chunkX, chunkY, chunkZ, chunkSize) {
-        this.chunkX = chunkX;
-        this.chunkY = chunkY;
-        this.chunkZ = chunkZ;
-        this.chunkSize = chunkSize;
-        this.voxelData = [];
-    }
+function getMeshData(voxelData) {
+    const positions = [];
+    const indices = [];
+    const normals = [];
+    const colors = [];
+    let vertexIndex = 0;
 
-    generateVoxelDataFromBuffer(data) {
-        const chunkSize = this.chunkSize;
-        let index = 0;
-        for (let x = 0; x < chunkSize; x++) {
-            this.voxelData[x] = [];
-            for (let y = 0; y < chunkSize; y++) {
-                this.voxelData[x][y] = [];
-                for (let z = 0; z < chunkSize; z++) {
-                    this.voxelData[x][y][z] = data[index++];
-                }
-            }
-        }
-    }
-    
-    getVoxel(x, y, z) {
-        if (x >= 0 && x < this.chunkSize && y >= 0 && y < this.chunkSize && z >= 0 && z < this.chunkSize) {
-            return this.voxelData[x][y][z];
-        }
-        return 0;
-    }
+    const materialColors = {
+        1: [0.6, 0.4, 0.2, 1.0], // Terra
+        2: [0.3, 0.6, 0.2, 1.0], // Erba
+        3: [0.4, 0.4, 0.4, 1.0]  // Pietra
+    };
 
-    getMeshData() {
-        const positions = [];
-        const indices = [];
-        const normals = [];
-        const colors = [];
+    const faceData = [
+        { normal: [0, 0, 1], vertices: [ {x:0,y:0,z:1}, {x:1,y:0,z:1}, {x:1,y:1,z:1}, {x:0,y:1,z:1} ] }, // +Z
+        { normal: [0, 0, -1], vertices: [ {x:0,y:0,z:0}, {x:0,y:1,z:0}, {x:1,y:1,z:0}, {x:1,y:0,z:0} ] }, // -Z
+        { normal: [1, 0, 0], vertices: [ {x:1,y:0,z:0}, {x:1,y:1,z:0}, {x:1,y:1,z:1}, {x:1,y:0,z:1} ] }, // +X
+        { normal: [-1, 0, 0], vertices: [ {x:0,y:0,z:0}, {x:0,y:0,z:1}, {x:0,y:1,z:1}, {x:0,y:1,z:0} ] }, // -X
+        { normal: [0, 1, 0], vertices: [ {x:0,y:1,z:0}, {x:0,y:1,z:1}, {x:1,y:1,z:1}, {x:1,y:1,z:0} ] }, // +Y
+        { normal: [0, -1, 0], vertices: [ {x:0,y:0,z:0}, {x:1,y:0,z:0}, {x:1,y:0,z:1}, {x:0,y:0,z:1} ] }, // -Y
+    ];
 
-        let vertexCount = 0;
+    const neighborOffsets = [
+        [0, 0, 1], [0, 0, -1],
+        [1, 0, 0], [-1, 0, 0],
+        [0, 1, 0], [0, -1, 0]
+    ];
 
-        const materialColors = {
-            1: { r: 0.6, g: 0.4, b: 0.2 },
-            2: { r: 0.3, g: 0.6, b: 0.2 },
-            3: { r: 0.4, g: 0.4, b: 0.4 }
-        };
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+        for (let y = 0; y < CHUNK_SIZE; y++) {
+            for (let z = 0; z < CHUNK_SIZE; z++) {
+                const blockType = getVoxel(voxelData, x, y, z);
+                if (blockType === 0) continue;
 
-        const faceData = {
-            top: { normal: [0, 1, 0], vertices: [ {x:-0.5,y:0.5,z:-0.5}, {x:0.5,y:0.5,z:-0.5}, {x:0.5,y:0.5,z:0.5}, {x:-0.5,y:0.5,z:0.5} ] },
-            bottom: { normal: [0, -1, 0], vertices: [ {x:-0.5,y:-0.5,z:-0.5}, {x:-0.5,y:-0.5,z:0.5}, {x:0.5,y:-0.5,z:0.5}, {x:0.5,y:-0.5,z:-0.5} ] },
-            front: { normal: [0, 0, 1], vertices: [ {x:-0.5,y:-0.5,z:0.5}, {x:-0.5,y:0.5,z:0.5}, {x:0.5,y:0.5,z:0.5}, {x:0.5,y:-0.5,z:0.5} ] },
-            back: { normal: [0, 0, -1], vertices: [ {x:-0.5,y:-0.5,z:-0.5}, {x:0.5,y:-0.5,z:-0.5}, {x:0.5,y:0.5,z:-0.5}, {x:-0.5,y:0.5,z:-0.5} ] },
-            right: { normal: [1, 0, 0], vertices: [ {x:0.5,y:-0.5,z:-0.5}, {x:0.5,y:-0.5,z:0.5}, {x:0.5,y:0.5,z:0.5}, {x:0.5,y:0.5,z:-0.5} ] },
-            left: { normal: [-1, 0, 0], vertices: [ {x:-0.5,y:-0.5,z:-0.5}, {x:-0.5,y:0.5,z:-0.5}, {x:-0.5,y:0.5,z:0.5}, {x:-0.5,y:-0.5,z:0.5} ] }
-        };
+                for (let i = 0; i < neighborOffsets.length; i++) {
+                    const [dx, dy, dz] = neighborOffsets[i];
+                    
+                    const neighborType = getVoxel(voxelData, x + dx, y + dy, z + dz);
+                    if (neighborType === 0) {
+                        const face = faceData[i];
+                        const faceColor = materialColors[blockType];
 
-        const addFace = (blockX, blockY, blockZ, faceVertices, faceNormal, blockColor) => {
-            for (let i = 0; i < faceVertices.length; i++) {
-                const v = faceVertices[i];
-                positions.push(blockX + v.x, blockY + v.y, blockZ + v.z);
-                normals.push(faceNormal[0], faceNormal[1], faceNormal[2]);
-                colors.push(blockColor.r, blockColor.g, blockColor.b, 1.0);
-            }
-            indices.push(vertexCount + 0, vertexCount + 1, vertexCount + 2);
-            indices.push(vertexCount + 0, vertexCount + 2, vertexCount + 3);
-            vertexCount += 4;
-        };
+                        positions.push(x + face.vertices[0].x, y + face.vertices[0].y, z + face.vertices[0].z);
+                        positions.push(x + face.vertices[1].x, y + face.vertices[1].y, z + face.vertices[1].z);
+                        positions.push(x + face.vertices[2].x, y + face.vertices[2].y, z + face.vertices[2].z);
+                        positions.push(x + face.vertices[3].x, y + face.vertices[3].y, z + face.vertices[3].z);
 
-        for (let x = 0; x < this.chunkSize; x++) {
-            for (let y = 0; y < this.chunkSize; y++) {
-                for (let z = 0; z < this.chunkSize; z++) {
-                    const blockType = this.voxelData[x][y][z];
+                        normals.push(...face.normal, ...face.normal, ...face.normal, ...face.normal);
+                        colors.push(...faceColor, ...faceColor, ...faceColor, ...faceColor);
 
-                    if (blockType !== 0) {
-                        const blockColor = materialColors[blockType];
-                        
-                        if (y === this.chunkSize - 1 || this.getVoxel(x, y + 1, z) === 0) {
-                            addFace(x, y, z, faceData.top.vertices, faceData.top.normal, blockColor);
-                        }
-                        if (y === 0 || this.getVoxel(x, y - 1, z) === 0) {
-                            addFace(x, y, z, faceData.bottom.vertices, faceData.bottom.normal, blockColor);
-                        }
-                        if (z === this.chunkSize - 1 || this.getVoxel(x, y, z + 1) === 0) {
-                            addFace(x, y, z, faceData.front.vertices, faceData.front.normal, blockColor);
-                        }
-                        if (z === 0 || this.getVoxel(x, y, z - 1) === 0) {
-                            addFace(x, y, z, faceData.back.vertices, faceData.back.normal, blockColor);
-                        }
-                        if (x === this.chunkSize - 1 || this.getVoxel(x + 1, y, z) === 0) {
-                            addFace(x, y, z, faceData.right.vertices, faceData.right.normal, blockColor);
-                        }
-                        if (x === 0 || this.getVoxel(x - 1, y, z) === 0) {
-                            addFace(x, y, z, faceData.left.vertices, faceData.left.normal, blockColor);
-                        }
+                        indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2);
+                        indices.push(vertexIndex, vertexIndex + 0, vertexIndex + 2, vertexIndex + 3);
+
+                        vertexIndex += 4;
                     }
                 }
             }
         }
-
-        return {
-            positions: new Float32Array(positions),
-            indices: new Uint32Array(indices),
-            normals: new Float32Array(normals),
-            colors: new Float32Array(colors)
-        };
     }
+    
+    return { positions, indices, normals, colors };
 }
 
-// Listener per i messaggi inviati al Web Worker
+
 self.onmessage = (event) => {
-    const { type, chunkX, chunkY, chunkZ, chunkSize, regionFileBuffer } = event.data;
-    
-    // Logica per caricare un chunk da un file di regione
+    const { type, regionFileBuffer, neighborBuffers, chunkIndex, chunkX, chunkY, chunkZ } = event.data;
+
     if (type === 'loadChunkFromRegion') {
-        const regionManager = new RegionFileManager(regionFileBuffer);
+        const reader = new VoxelReader(regionFileBuffer);
+        const chunkData = reader.getChunkData(chunkIndex);
 
-        const chunkIndex = 0; 
-
-        const chunkVoxelData = regionManager.getChunkData(chunkIndex);
-
-        if (chunkVoxelData) {
-            const chunkWorker = new VoxelChunkWorker(chunkX, chunkY, chunkZ, chunkSize);
-            chunkWorker.generateVoxelDataFromBuffer(chunkVoxelData);
-
-            const meshData = chunkWorker.getMeshData();
-            
-            self.postMessage({
-                type: 'chunkGenerated',
-                chunkX,
-                chunkY,
-                chunkZ,
-                meshData
-            }, [meshData.positions.buffer, meshData.indices.buffer, meshData.normals.buffer, meshData.colors.buffer]);
+        const newNeighborBuffers = {};
+        for (const key in neighborBuffers) {
+            newNeighborBuffers[key] = new Uint8Array(neighborBuffers[key]);
         }
+        
+        const meshData = getMeshData({ chunkData, neighborBuffers: newNeighborBuffers });
+        
+        self.postMessage({
+            type: 'chunkGenerated',
+            chunkX,
+            chunkY,
+            chunkZ,
+            meshData
+        }, [meshData.positions.buffer, meshData.indices.buffer, meshData.normals.buffer, meshData.colors.buffer]);
     }
 };
