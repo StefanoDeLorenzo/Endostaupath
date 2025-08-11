@@ -244,8 +244,6 @@
                 const newVisibleChunks = new Set();
                 const renderDistanceXZ = this.renderDistance;
                 const renderDistanceY = 1;
-                
-                const frustumPlanes = camera.getFrustumPlanes();
 
                 for (let x = chunkX - renderDistanceXZ; x <= chunkX + renderDistanceXZ; x++) {
                     for (let y = chunkY - renderDistanceY; y <= chunkY + renderDistanceY; y++) {
@@ -253,7 +251,9 @@
                             const chunkKey = this.getChunkKey(x, y, z);
                             
                             const chunkBoundingInfo = this.createChunkBoundingInfo(x, y, z);
-                            if (chunkBoundingInfo.isInFrustum(frustumPlanes)) {
+                            
+                            // 💡 SINTASSI CORRETTA per il frustum culling
+                            if (camera.isInFrustum(chunkBoundingInfo)) {
                                 newVisibleChunks.add(chunkKey);
                             }
                         }
