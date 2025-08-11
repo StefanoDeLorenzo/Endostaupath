@@ -243,16 +243,17 @@
 
                 const newVisibleChunks = new Set();
                 const renderDistanceXZ = this.renderDistance;
-                const renderDistanceY = 3;
+                const renderDistanceY = 1;
                 
+                const frustumPlanes = camera.getFrustumPlanes();
+
                 for (let x = chunkX - renderDistanceXZ; x <= chunkX + renderDistanceXZ; x++) {
                     for (let y = chunkY - renderDistanceY; y <= chunkY + renderDistanceY; y++) {
                         for (let z = chunkZ - renderDistanceXZ; z <= chunkZ + renderDistanceXZ; z++) {
                             const chunkKey = this.getChunkKey(x, y, z);
                             
-                            // Esegui il frustum culling
                             const chunkBoundingInfo = this.createChunkBoundingInfo(x, y, z);
-                            if (camera.isInFrustum(chunkBoundingInfo.boundingSphere)) {
+                            if (chunkBoundingInfo.isInFrustum(frustumPlanes)) {
                                 newVisibleChunks.add(chunkKey);
                             }
                         }
@@ -269,7 +270,7 @@
                         }
                     }
                 }
-    
+
                 // Rimuovi i chunk dalla cache se sono scaduti
                 for (const [key, { chunk, timestamp }] of this.chunksCache.entries()) {
                     if (Date.now() - timestamp > this.cacheTimeout) {
@@ -277,29 +278,26 @@
                         this.chunksCache.delete(key);
                     }
                 }
-    
-                // Aggiungi i nuovi chunk visibili alla coda
+
+                // Aggiungi i nuovi chunk visibili alla coda o recuperali dalla cache
                 for (const chunkKey of newVisibleChunks) {
-                    const [x, y, z] = chunkKey.split(',').map(Number);
                     if (!this.loadedChunks.has(chunkKey)) {
-                        // Controlla prima la cache
+                        const [x, y, z] = chunkKey.split(',').map(Number);
+                        
                         if (this.chunksCache.has(chunkKey)) {
                             const { chunk } = this.chunksCache.get(chunkKey);
                             chunks.set(chunkKey, chunk);
                             this.chunksCache.delete(chunkKey);
                             this.loadedChunks.add(chunkKey);
                         } else {
-                            // Se non è in cache, mettilo in coda per il worker
                             this.addChunkToWorkerQueue(x, y, z);
                         }
                     }
                 }
-
-                // Aggiorna la lista dei chunk visibili
+                
                 this.loadedChunks = newVisibleChunks;
             }
         }
-
 
         const createScene = function () {
             const canvas = document.getElementById("renderCanvas");
@@ -336,7 +334,8 @@
 
             const chunkSize = 32;
             const regionChunks = 4;
-            const chunkManager = new ChunkManager(scene, chunkSize, regionChunks);
+            const renderDistance = 10;
+            const chunkManager = new ChunkManager(scene, chunkSize, regionChunks, renderDistance);
 
             scene.onBeforeRenderObservable.add(() => {
                 chunkManager.updateChunks(camera.position, camera); 
@@ -356,4 +355,3 @@
     </script>
 </body>
 </html>
-
