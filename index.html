@@ -80,7 +80,7 @@
         }
 
         class ChunkManager {
-            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 2) {
+            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 10) {
                 this.scene = scene;
                 this.chunkSize = chunkSize;
                 this.regionChunks = regionChunks;
@@ -243,7 +243,7 @@
 
                 const newVisibleChunks = new Set();
                 const renderDistanceXZ = this.renderDistance;
-                const renderDistanceY = 1;
+                const renderDistanceY = 3;
                 
                 for (let x = chunkX - renderDistanceXZ; x <= chunkX + renderDistanceXZ; x++) {
                     for (let y = chunkY - renderDistanceY; y <= chunkY + renderDistanceY; y++) {
@@ -356,3 +356,4 @@
     </script>
 </body>
 </html>
+
