@@ -188,7 +188,7 @@
                     chunkLocalX,
                     chunkLocalY,
                     chunkLocalZ,
-                }, [job.fromCache ? regionBuffer : regionBuffer.slice()]); // Condivide il buffer solo se non è dalla cache
+                }, [job.fromCache ? regionBuffer : regionBuffer.slice()]);
             }
 
 
@@ -216,7 +216,7 @@
 
                 const newVisibleChunks = new Set();
                 const startY = Math.max(0, chunkY - this.renderDistance);
-                const endY = Math.min(this.regionChunks * 4, chunkY + this.renderDistance); // Assume 4x4x4 regioni
+                const endY = Math.min(this.regionChunks * 4, chunkY + this.renderDistance);
 
                 for (let x = chunkX - this.renderDistance; x <= chunkX + this.renderDistance; x++) {
                     for (let y = startY; y <= endY; y++) {
@@ -285,10 +285,10 @@
                 chunkManager.updateChunks(camera.position); 
             });
 
-            return scene;
+            return { scene, engine }; // Modificato per restituire sia la scena che il motore
         };
 
-        const scene = createScene();
+        const { scene, engine } = createScene(); // Cattura sia la scena che il motore
         engine.runRenderLoop(function () {
             scene.render();
         });
