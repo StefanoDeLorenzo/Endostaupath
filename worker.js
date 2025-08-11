@@ -139,7 +139,7 @@ function getMeshData(voxelData) {
                         colors.push(...faceColor, ...faceColor, ...faceColor, ...faceColor);
 
                         indices.push(vertexIndex, vertexIndex + 1, vertexIndex + 2);
-                        indices.push(vertexIndex, vertexIndex + 0, vertexIndex + 2, vertexIndex + 3);
+                        indices.push(vertexIndex, vertexIndex + 2, vertexIndex + 3);
 
                         vertexIndex += 4;
                     }
