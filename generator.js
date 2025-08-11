@@ -13,7 +13,7 @@ class RegionFileManager {
      */
     static generateRegionFile(regionX, regionZ) {
         const chunkSize = 32;
-        const regionChunks = 1;
+        const regionChunks = 4; // Ogni regione è ora 4x4x4 chunk
         const numberOfChunks = regionChunks * regionChunks * regionChunks;
         const indexEntrySize = 8;
         const headerSize = 4 + 1 + 3 + 4;
@@ -37,42 +37,44 @@ class RegionFileManager {
         offset += 4;
 
         let currentVoxelDataOffset = 0;
-        dataView.setUint32(offset, currentVoxelDataOffset, true);
-        offset += 4;
-        dataView.setUint32(offset, chunkSizeInBytes, true);
-        offset += 4;
-
+        const indexTableOffset = offset;
         const voxelDataOffset = headerSize + indexTableSize;
         const voxelDataArray = new Uint8Array(buffer, voxelDataOffset, totalVoxelDataSize);
         let dataIndex = 0;
 
-        const chunkX = regionX * regionChunks;
-        const chunkY = 0;
-        const chunkZ = regionZ * regionChunks;
+        for (let chunkLocalX = 0; chunkLocalX < regionChunks; chunkLocalX++) {
+            for (let chunkLocalY = 0; chunkLocalY < regionChunks; chunkLocalY++) {
+                for (let chunkLocalZ = 0; chunkLocalZ < regionChunks; chunkLocalZ++) {
+                    dataView.setUint32(indexTableOffset + (chunkLocalX * regionChunks * regionChunks + chunkLocalY * regionChunks + chunkLocalZ) * indexEntrySize, currentVoxelDataOffset, true);
+                    dataView.setUint32(indexTableOffset + (chunkLocalX * regionChunks * regionChunks + chunkLocalY * regionChunks + chunkLocalZ) * indexEntrySize + 4, chunkSizeInBytes, true);
+                    
+                    const chunkX = regionX * regionChunks + chunkLocalX;
+                    const chunkY = regionChunks * regionChunks + chunkLocalY; // Aggiustato per mostrare più chunk verticalmente
+                    const chunkZ = regionZ * regionChunks + chunkLocalZ;
+                    
+                    for (let x = 0; x < chunkSize; x++) {
+                        for (let y = 0; y < chunkSize; y++) {
+                            for (let z = 0; z < chunkSize; z++) {
+                                const globalX = chunkX * chunkSize + x;
+                                const globalY = chunkY * chunkSize + y;
+                                const globalZ = chunkZ * chunkSize + z;
 
-        for (let x = 0; x < chunkSize; x++) {
-            for (let y = 0; y < chunkSize; y++) {
-                for (let z = 0; z < chunkSize; z++) {
-                    const globalX = chunkX * chunkSize + x;
-                    const globalZ = chunkZ * chunkSize + z;
-                    const baseHeight = Math.floor(chunkSize / 8 + Math.sin(globalX * 0.05) * 2 + Math.cos(globalZ * 0.05) * 2);
+                                const baseHeight = Math.floor(globalY / 8 + Math.sin(globalX * 0.05) * 2 + Math.cos(globalZ * 0.05) * 2);
 
-                    if (y < baseHeight - 2) {
-                        voxelDataArray[dataIndex] = 3;
-                    } else if (y < baseHeight) {
-                        voxelDataArray[dataIndex] = 1;
-                    } else if (y === baseHeight) {
-                        voxelDataArray[dataIndex] = 2;
-                    } else {
-                        voxelDataArray[dataIndex] = 0;
+                                if (y + chunkY*chunkSize < baseHeight - 2) {
+                                    voxelDataArray[dataIndex] = 3;
+                                } else if (y + chunkY*chunkSize < baseHeight) {
+                                    voxelDataArray[dataIndex] = 1;
+                                } else if (y + chunkY*chunkSize === baseHeight) {
+                                    voxelDataArray[dataIndex] = 2;
+                                } else {
+                                    voxelDataArray[dataIndex] = 0;
+                                }
+                                dataIndex++;
+                            }
+                        }
                     }
-
-                    if (x > chunkSize / 4 && x < chunkSize * 3 / 4 && z > chunkSize / 4 && z < chunkSize * 3 / 4 && y === baseHeight + 3) {
-                         if (Math.random() < 0.1) {
-                            voxelDataArray[dataIndex] = 1;
-                         }
-                    }
-                    dataIndex++;
+                    currentVoxelDataOffset += chunkSizeInBytes;
                 }
             }
         }
@@ -80,14 +82,11 @@ class RegionFileManager {
     }
 }
 
-// Listener per i messaggi inviati al Web Worker
 self.onmessage = (event) => {
     const { type, regionX, regionZ } = event.data;
-
     if (type === 'generateRegion') {
         console.log(`Generazione regione (${regionX}, ${regionZ})...`);
         const regionBuffer = RegionFileManager.generateRegionFile(regionX, regionZ);
-        
         self.postMessage({
             type: 'regionGenerated',
             regionX,
