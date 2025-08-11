@@ -69,7 +69,7 @@ function getVoxel(context, x, y, z) {
     const chunkLocalY = (chunkY % REGION_CHUNKS + REGION_CHUNKS) % REGION_CHUNKS;
     const chunkLocalZ = (chunkZ % REGION_CHUNKS + REGION_CHUNKS) % REGION_CHUNKS;
 
-    const regionKey = `${regionX},${regionZ}`;
+    const regionKey = `r.${regionX}.${regionZ}.voxl`;
     const regionReader = context.regionReaders[regionKey];
 
     if (!regionReader) {
