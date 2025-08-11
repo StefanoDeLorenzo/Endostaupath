@@ -22,6 +22,14 @@
 <body>
     <canvas id="renderCanvas"></canvas>
     <script>
+        const worker = new Worker('./worker.js');
+        const regionWorker = new Worker('./generator.js');
+
+        const regions = new Map();
+        const chunks = new Map();
+        const workerQueue = [];
+        let isWorkerBusy = false;
+
         /**
          * @class VoxelChunk
          * @description Si occupa della creazione della mesh sul thread principale, una volta ricevuti
@@ -40,6 +48,11 @@
             }
             
             buildMesh(meshData) {
+                // Gestione del caso in cui il chunk è vuoto.
+                if (!meshData.positions || meshData.positions.length === 0) {
+                    return;
+                }
+
                 if (this.mesh) {
                     this.mesh.dispose();
                 }
@@ -73,128 +86,177 @@
 
         /**
          * @class ChunkManager
-         * @description Gestisce la generazione e il caricamento dinamico dei chunk.
+         * @description Gestisce il caricamento e lo scaricamento dei chunk in base alla posizione del giocatore.
          */
         class ChunkManager {
-            constructor(scene, chunkSize, regionChunks) {
+            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 1) {
                 this.scene = scene;
                 this.chunkSize = chunkSize;
                 this.regionChunks = regionChunks;
-                this.chunks = new Map();
-                this.loadedRegionFiles = new Map();
-                this.worker = new Worker('./worker.js');
-                this.setupWorker();
+                this.renderDistance = renderDistance;
+                this.chunksToLoad = new Set();
+                this.loadedChunks = new Set();
+
+                this.worker = worker;
+                this.worker.onmessage = this.handleWorkerMessage.bind(this);
             }
 
-            setupWorker() {
-                this.worker.onmessage = (event) => {
-                    const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
-
-                    if (type === 'chunkGenerated') {
-                        const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
-                        const voxelChunk = new VoxelChunk(chunkX, chunkY, chunkZ, this.chunkSize, this.scene, meshData);
-                        this.chunks.set(chunkKey, voxelChunk);
-                        console.log(`Chunk ${chunkKey} generato e visualizzato.`);
-                    }
-                };
+            // Metodo per convertire le coordinate della telecamera in coordinate di chunk
+            getChunkCoordinates(position) {
+                const chunkX = Math.floor(position.x / this.chunkSize);
+                const chunkY = Math.floor(position.y / this.chunkSize);
+                const chunkZ = Math.floor(position.z / this.chunkSize);
+                return { chunkX, chunkY, chunkZ };
             }
 
-            getRegionFileName(regionX, regionZ) {
+            getChunkKey(x, y, z) {
+                return `${x},${y},${z}`;
+            }
+
+            getRegionKey(chunkX, chunkZ) {
+                const regionX = Math.floor(chunkX / this.regionChunks);
+                const regionZ = Math.floor(chunkZ / this.regionChunks);
                 return `r.${regionX}.${regionZ}.voxl`;
             }
 
-            loadRegionFile(regionX, regionZ) {
-                const regionKey = `${regionX},${regionZ}`;
-                if (this.loadedRegionFiles.has(regionKey)) {
+            // Aggiungi un chunk alla coda per essere processato dal worker
+            addChunkToWorkerQueue(chunkX, chunkY, chunkZ) {
+                const chunkKey = this.getChunkKey(chunkX, chunkY, chunkZ);
+                if (this.loadedChunks.has(chunkKey) || this.chunksToLoad.has(chunkKey)) {
                     return;
                 }
 
-                this.loadedRegionFiles.set(regionKey, 'loading'); // Segna la regione come in caricamento
-
-                const fileName = this.getRegionFileName(regionX, regionZ);
-                const url = `./regions/${fileName}`;
+                this.chunksToLoad.add(chunkKey);
+                const regionKey = this.getRegionKey(chunkX, chunkZ);
                 
-                fetch(url)
+                const regionBuffer = regions.get(regionKey);
+                if (regionBuffer) {
+                    workerQueue.push({ chunkX, chunkY, chunkZ, regionFileBuffer: regionBuffer, fromCache: true });
+                    this.processWorkerQueue();
+                } else {
+                    this.loadRegionFile(regionKey, () => {
+                         const buffer = regions.get(regionKey);
+                         workerQueue.push({ chunkX, chunkY, chunkZ, regionFileBuffer: buffer, fromCache: false });
+                         this.processWorkerQueue();
+                    });
+                }
+            }
+
+            loadRegionFile(regionKey, callback) {
+                if (regions.has(regionKey)) {
+                    callback();
+                    return;
+                }
+
+                fetch(`./regions/${regionKey}`)
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error(`File regione non trovato: ${fileName}`);
+                            throw new Error(`Regione ${regionKey} non trovata.`);
                         }
                         return response.arrayBuffer();
                     })
-                    .then(arrayBuffer => {
-                        this.loadedRegionFiles.set(regionKey, arrayBuffer);
-                        console.log(`File regione ${fileName} caricato.`);
-                        
-                        const numberOfChunksInRegion = this.regionChunks * this.regionChunks * this.regionChunks;
-                        for(let i = 0; i < numberOfChunksInRegion; i++) {
-                            const chunkLocalX = i % this.regionChunks;
-                            const chunkLocalY = Math.floor(i / (this.regionChunks * this.regionChunks));
-                            const chunkLocalZ = Math.floor((i % (this.regionChunks * this.regionChunks)) / this.regionChunks);
-
-                            const globalChunkX = regionX * this.regionChunks + chunkLocalX;
-                            const globalChunkY = chunkLocalY;
-                            const globalChunkZ = regionZ * this.regionChunks + chunkLocalZ;
-                            
-                            this.generateChunkFromRegion(globalChunkX, globalChunkY, globalChunkZ, i, arrayBuffer);
-                        }
+                    .then(buffer => {
+                        console.log(`Dati della regione ${regionKey} caricati. Dimensione: ${buffer.byteLength} byte.`);
+                        regions.set(regionKey, buffer);
+                        callback();
                     })
-                    .catch(error => {
-                        console.error(error.message);
-                        this.loadedRegionFiles.delete(regionKey); // Rimuove dalla mappa se il caricamento fallisce
-                    });
+                    .catch(error => console.error(error));
             }
-
-            generateChunkFromRegion(globalChunkX, globalChunkY, globalChunkZ, chunkIndexInRegion, regionFileBuffer) {
-                const chunkKey = `${globalChunkX},${globalChunkY},${globalChunkZ}`;
-                if (this.chunks.has(chunkKey)) {
+            
+            // Processa la coda del worker
+            processWorkerQueue() {
+                if (isWorkerBusy || workerQueue.length === 0) {
                     return;
                 }
                 
-                const bufferCopy = regionFileBuffer.slice(0);
+                isWorkerBusy = true;
+                const job = workerQueue.shift();
 
+                const regionKey = this.getRegionKey(job.chunkX, job.chunkZ);
+                const regionBuffer = regions.get(regionKey);
+                
+                const chunkLocalX = job.chunkX % this.regionChunks;
+                const chunkLocalY = job.chunkY % this.regionChunks;
+                const chunkLocalZ = job.chunkZ % this.regionChunks;
+                
+                const chunkIndex = chunkLocalX * this.regionChunks * this.regionChunks + chunkLocalY * this.regionChunks + chunkLocalZ;
+                
                 this.worker.postMessage({
                     type: 'loadChunkFromRegion',
-                    chunkIndex: chunkIndexInRegion,
-                    chunkLocalX: globalChunkX,
-                    chunkLocalY: globalChunkY,
-                    chunkLocalZ: globalChunkZ,
-                    regionFileBuffer: bufferCopy
-                }, [bufferCopy]);
+                    regionFileBuffer: regionBuffer,
+                    chunkIndex,
+                    chunkLocalX,
+                    chunkLocalY,
+                    chunkLocalZ,
+                }, [job.fromCache ? regionBuffer : regionBuffer.slice()]); // Condivide il buffer solo se non è dalla cache
             }
 
-            updateChunks(playerPosition) {
-                const regionX = Math.floor(playerPosition.x / (this.chunkSize * this.regionChunks));
-                const regionZ = Math.floor(playerPosition.z / (this.chunkSize * this.regionChunks));
 
-                const renderDistance = 1;
+            handleWorkerMessage(event) {
+                const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
+                if (type === 'chunkGenerated') {
+                    const chunkKey = this.getChunkKey(chunkX, chunkY, chunkZ);
+                    
+                    if (this.chunksToLoad.has(chunkKey)) {
+                        const voxelChunk = new VoxelChunk(chunkX, chunkY, chunkZ, this.chunkSize, this.scene, meshData);
+                        chunks.set(chunkKey, voxelChunk);
+                        this.chunksToLoad.delete(chunkKey);
+                        this.loadedChunks.add(chunkKey);
+                        console.log(`Chunk ${chunkX},${chunkY},${chunkZ} generato e visualizzato.`);
+                    }
 
-                for (let x = regionX - renderDistance; x <= regionX + renderDistance; x++) {
-                    for (let z = regionZ - renderDistance; z <= regionZ + renderDistance; z++) {
-                        const regionKey = `${x},${z}`;
-                        if (!this.loadedRegionFiles.has(regionKey)) {
-                            this.loadRegionFile(x, z);
+                    isWorkerBusy = false;
+                    this.processWorkerQueue();
+                }
+            }
+
+            // Aggiorna i chunk visibili
+            updateChunks(cameraPosition) {
+                const { chunkX, chunkY, chunkZ } = this.getChunkCoordinates(cameraPosition);
+
+                const newVisibleChunks = new Set();
+                const startY = Math.max(0, chunkY - this.renderDistance);
+                const endY = Math.min(this.regionChunks * 4, chunkY + this.renderDistance); // Assume 4x4x4 regioni
+
+                for (let x = chunkX - this.renderDistance; x <= chunkX + this.renderDistance; x++) {
+                    for (let y = startY; y <= endY; y++) {
+                        for (let z = chunkZ - this.renderDistance; z <= chunkZ + this.renderDistance; z++) {
+                            const chunkKey = this.getChunkKey(x, y, z);
+                            newVisibleChunks.add(chunkKey);
+                            this.addChunkToWorkerQueue(x, y, z);
                         }
                     }
                 }
+
+                // Scarica i chunk non più visibili
+                for (const chunkKey of this.loadedChunks) {
+                    if (!newVisibleChunks.has(chunkKey)) {
+                        const chunk = chunks.get(chunkKey);
+                        if (chunk) {
+                            chunk.dispose();
+                            chunks.delete(chunkKey);
+                        }
+                    }
+                }
+
+                this.loadedChunks = newVisibleChunks;
             }
         }
 
-        const canvas = document.getElementById('renderCanvas');
-        const engine = new BABYLON.Engine(canvas, true);
 
         const createScene = function () {
+            const canvas = document.getElementById("renderCanvas");
+            const engine = new BABYLON.Engine(canvas, true);
             const scene = new BABYLON.Scene(engine);
-            const camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 50, 0), scene);
+
+            const camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 80, 0), scene);
             camera.setTarget(BABYLON.Vector3.Zero());
             camera.attachControl(canvas, true);
+            camera.speed = 0.5;
             camera.keysUp = [87];
             camera.keysDown = [83];
             camera.keysLeft = [65];
             camera.keysRight = [68];
-            camera.speed = 0.5;
-            camera.applyGravity = true;
-            camera.checkCollisions = true;
-            camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
 
             let isFlying = false;
             scene.actionManager = new BABYLON.ActionManager(scene);
