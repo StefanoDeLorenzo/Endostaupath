@@ -149,13 +149,19 @@
 
                 const fetchPromise = fetch(`./regions/${regionKey}`)
                     .then(response => {
+                        if (response.status === 404) {
+                            console.warn(`Regione ${regionKey} non trovata. Trattata come aria.`);
+                            return new ArrayBuffer(0);
+                        }
                         if (!response.ok) {
-                            throw new Error(`Regione ${regionKey} non trovata.`);
+                            throw new Error(`Errore durante il caricamento della regione ${regionKey}. Stato: ${response.status}`);
                         }
                         return response.arrayBuffer();
                     })
                     .then(buffer => {
-                        console.log(`Dati della regione ${regionKey} caricati. Dimensione: ${buffer.byteLength} byte.`);
+                        if (buffer.byteLength > 0) {
+                             console.log(`Dati della regione ${regionKey} caricati. Dimensione: ${buffer.byteLength} byte.`);
+                        }
                         regions.set(regionKey, buffer);
                         loadingRegions.delete(regionKey);
                     })
