@@ -80,7 +80,7 @@
         }
 
         class ChunkManager {
-            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 2) {
+            constructor(scene, chunkSize, regionChunks = 4, renderDistance = 4) {
                 this.scene = scene;
                 this.chunkSize = chunkSize;
                 this.regionChunks = regionChunks;
@@ -234,19 +234,24 @@
                 const { chunkX, chunkY, chunkZ } = this.getChunkCoordinates(cameraPosition);
 
                 const newVisibleChunks = new Set();
-                const startY = Math.max(0, chunkY - this.renderDistance);
-                const endY = Math.min(this.regionChunks * 4, chunkY + this.renderDistance);
-
-                for (let x = chunkX - this.renderDistance; x <= chunkX + this.renderDistance; x++) {
-                    for (let y = startY; y <= endY; y++) {
-                        for (let z = chunkZ - this.renderDistance; z <= chunkZ + this.renderDistance; z++) {
+                
+                // Distanza di rendering su X e Z (area di esplorazione)
+                const renderDistanceXZ = this.renderDistance;
+                
+                // Distanza di rendering su Y (altezza dinamica)
+                const renderDistanceY = 1;
+            
+                for (let x = chunkX - renderDistanceXZ; x <= chunkX + renderDistanceXZ; x++) {
+                    // Carica solo i chunk vicini all'altezza del giocatore
+                    for (let y = chunkY - renderDistanceY; y <= chunkY + renderDistanceY; y++) {
+                        for (let z = chunkZ - renderDistanceXZ; z <= chunkZ + renderDistanceXZ; z++) {
                             const chunkKey = this.getChunkKey(x, y, z);
                             newVisibleChunks.add(chunkKey);
                             this.addChunkToWorkerQueue(x, y, z);
                         }
                     }
                 }
-
+            
                 for (const chunkKey of this.loadedChunks) {
                     if (!newVisibleChunks.has(chunkKey)) {
                         const chunk = chunks.get(chunkKey);
@@ -256,7 +261,7 @@
                         }
                     }
                 }
-
+            
                 this.loadedChunks = newVisibleChunks;
             }
         }
@@ -317,3 +322,4 @@
     </script>
 </body>
 </html>
+
