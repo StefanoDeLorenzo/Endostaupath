@@ -26,6 +26,7 @@
         const regionWorker = new Worker('./generator.js');
 
         const regions = new Map();
+        const loadingRegions = new Map();
         const chunks = new Map();
         const workerQueue = [];
         let isWorkerBusy = false;
@@ -124,25 +125,29 @@
                     }
                 }
                 
-                let loadedCount = 0;
-                regionKeys.forEach(regionKey => {
-                    this.loadRegionFile(regionKey, () => {
-                        loadedCount++;
-                        if (loadedCount === regionKeys.size) {
-                            workerQueue.push({ chunkX, chunkY, chunkZ });
-                            this.processWorkerQueue();
-                        }
+                const fetchPromises = Array.from(regionKeys).map(regionKey => this.loadRegionFile(regionKey));
+
+                Promise.all(fetchPromises)
+                    .then(() => {
+                        workerQueue.push({ chunkX, chunkY, chunkZ });
+                        this.processWorkerQueue();
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        this.chunksToLoad.delete(chunkKey);
                     });
-                });
             }
 
-            loadRegionFile(regionKey, callback) {
+            loadRegionFile(regionKey) {
                 if (regions.has(regionKey)) {
-                    callback();
-                    return;
+                    return Promise.resolve();
                 }
 
-                fetch(`./regions/${regionKey}`)
+                if (loadingRegions.has(regionKey)) {
+                    return loadingRegions.get(regionKey);
+                }
+
+                const fetchPromise = fetch(`./regions/${regionKey}`)
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`Regione ${regionKey} non trovata.`);
@@ -152,9 +157,15 @@
                     .then(buffer => {
                         console.log(`Dati della regione ${regionKey} caricati. Dimensione: ${buffer.byteLength} byte.`);
                         regions.set(regionKey, buffer);
-                        callback();
+                        loadingRegions.delete(regionKey);
                     })
-                    .catch(error => console.error(error));
+                    .catch(error => {
+                        loadingRegions.delete(regionKey);
+                        throw error;
+                    });
+                
+                loadingRegions.set(regionKey, fetchPromise);
+                return fetchPromise;
             }
             
             processWorkerQueue() {
