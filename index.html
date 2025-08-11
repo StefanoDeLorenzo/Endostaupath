@@ -118,8 +118,8 @@
                 const regionKeys = new Set();
                 for (let x = -1; x <= 1; x++) {
                     for (let z = -1; z <= 1; z++) {
-                        const neighborChunkX = chunkX + x * this.chunkSize;
-                        const neighborChunkZ = chunkZ + z * this.chunkSize;
+                        const neighborChunkX = chunkX + x;
+                        const neighborChunkZ = chunkZ + z;
                         regionKeys.add(this.getRegionKey(neighborChunkX, neighborChunkZ));
                     }
                 }
@@ -168,18 +168,21 @@
                 const regionBuffers = {};
                 const transferableObjects = [];
 
+                const regionKeys = new Set();
                 for (let x = -1; x <= 1; x++) {
                     for (let z = -1; z <= 1; z++) {
-                        const neighborChunkX = job.chunkX + x * this.chunkSize;
-                        const neighborChunkZ = job.chunkZ + z * this.chunkSize;
-                        const regionKey = this.getRegionKey(neighborChunkX, neighborChunkZ);
-                        const buffer = regions.get(regionKey);
-                        if (buffer) {
-                             const key = `${x},${z}`;
-                             const bufferSlice = buffer.slice();
-                             regionBuffers[key] = bufferSlice;
-                             transferableObjects.push(bufferSlice);
-                        }
+                        const neighborChunkX = job.chunkX + x;
+                        const neighborChunkZ = job.chunkZ + z;
+                        regionKeys.add(this.getRegionKey(neighborChunkX, neighborChunkZ));
+                    }
+                }
+
+                for (const regionKey of regionKeys) {
+                    const buffer = regions.get(regionKey);
+                    if (buffer) {
+                         const bufferSlice = buffer.slice();
+                         regionBuffers[regionKey] = bufferSlice;
+                         transferableObjects.push(bufferSlice);
                     }
                 }
                 
@@ -215,7 +218,7 @@
 
                 const newVisibleChunks = new Set();
                 const startY = Math.max(0, chunkY - this.renderDistance);
-                const endY = Math.min(this.regionChunks * this.chunkSize -1, chunkY + this.renderDistance);
+                const endY = Math.min(this.regionChunks * 4, chunkY + this.renderDistance);
 
                 for (let x = chunkX - this.renderDistance; x <= chunkX + this.renderDistance; x++) {
                     for (let y = startY; y <= endY; y++) {
