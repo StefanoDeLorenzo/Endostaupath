@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generatore di File Regione</title>
+</head>
+<body>
+    <h1>Generatore di File Regione</h1>
+    <p>Inserisci l'intervallo di regioni da generare:</p>
+    Da Regione X: <input type="number" id="fromX" value="-1">
+    a X: <input type="number" id="toX" value="1"><br>
+    Da Regione Y: <input type="number" id="fromY" value="-1">
+    a Y: <input type="number" id="toY" value="1"><br>
+    Da Regione Z: <input type="number" id="fromZ" value="-1">
+    a Z: <input type="number" id="toZ" value="1"><br>
+    <button id="generateButton">Genera e Salva Regioni</button>
+    <pre id="log"></pre>
+
+    <script>
+        const worker = new Worker('./generator.js');
+        const log = document.getElementById('log');
+        let generatedCount = 0;
+        let totalToGenerate = 0;
+
+        function appendLog(message) {
+            log.textContent += message + '\n';
+        }
+
+        document.getElementById('generateButton').addEventListener('click', () => {
+            const fromX = parseInt(document.getElementById('fromX').value);
+            const toX = parseInt(document.getElementById('toX').value);
+            const fromY = parseInt(document.getElementById('fromY').value);
+            const toY = parseInt(document.getElementById('toY').value);
+            const fromZ = parseInt(document.getElementById('fromZ').value);
+            const toZ = parseInt(document.getElementById('toZ').value);
+            
+            generatedCount = 0;
+            totalToGenerate = (toX - fromX + 1) * (toY - fromY + 1) * (toZ - fromZ + 1);
+            appendLog(`Inizio generazione di ${totalToGenerate} regioni...`);
+
+            for (let x = fromX; x <= toX; x++) {
+                for (let y = fromY; y <= toY; y++) {
+                    for (let z = fromZ; z <= toZ; z++) {
+                        worker.postMessage({
+                            type: 'generateRegion',
+                            regionX: x,
+                            regionY: y,
+                            regionZ: z
+                        });
+                    }
+                }
+            }
+        });
+
+        worker.onmessage = (event) => {
+            const { type, regionX, regionY, regionZ, buffer } = event.data;
+
+            if (type === 'regionGenerated') {
+                appendLog(`Regione (${regionX}, ${regionY}, ${regionZ}) generata con successo.`);
+                
+                const blob = new Blob([buffer], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `r.${regionX}.${regionY}.${regionZ}.voxl`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                generatedCount++;
+                if (generatedCount === totalToGenerate) {
+                    appendLog('Tutte le regioni sono state generate e salvate!');
+                }
+            }
+        };
+
+        worker.onerror = (error) => {
+            appendLog(`Errore nel worker: ${error.message}`);
+        };
+    </script>
+</body>
+</html>

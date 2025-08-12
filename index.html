@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Voxel Engine con Babylon.js</title>
+    <style>
+        body, html, canvas {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+        
+        const workers = new Map();
+        const CHUNK_SIZE = 30;
+        const CHUNK_SIZE_SHELL = 32;
+        const REGION_DIMENSION = 4;
+        
+        const createScene = function () {
+            const scene = new BABYLON.Scene(engine);
+            
+            const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
+            camera.setTarget(new BABYLON.Vector3(60, 0, 60)); // Cambiato il target per centrare la regione
+            camera.attachControl(canvas, true);
+            
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.7;
+            
+            if (window.Worker) {
+                loadRegionAndMeshAllChunks(0, 0, 0);
+            } else {
+                console.error("Il tuo browser non supporta i Web Worker.");
+            }
+            
+            return scene;
+        };
+
+        const scene = createScene();
+        
+        
+        function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
+            const dataView = new DataView(buffer);
+            
+            const headerSize = 11;
+            // CORREZIONE DELLA FORMULA DELL'INDICE DEL CHUNK
+            const chunkIndex = chunkZ + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
+            
+            const offsetIndex = headerSize + chunkIndex * 5;
+            const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
+
+            if (chunkFileOffset === 0) {
+                return null;
+            }
+            
+            const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
+            const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
+            return new Uint8Array(chunkBuffer);
+        }
+// ...
+
+        async function loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
+            try {
+                const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
+                console.log(`Thread principale: Caricamento del file ${regionPath}...`);
+
+                const response = await fetch(regionPath);
+                if (!response.ok) {
+                    throw new Error(`Impossibile caricare il file: ${response.statusText}`);
+                }
+                const buffer = await response.arrayBuffer();
+
+                console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+                
+                for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                    for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                        for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                            const chunkData = getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
+                            
+                            if (chunkData === null) {
+                                console.log(`Thread principale: Chunk (${chunkX}, ${chunkY}, ${chunkZ}) è vuoto. Salto.`);
+                                continue;
+                            }
+                            
+                            const workerId = `chunk_${chunkX}_${chunkY}_${chunkZ}`;
+                            const worker = new Worker('worker.js');
+                            workers.set(workerId, worker);
+                            
+                            worker.onmessage = (event) => {
+                                const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
+                                
+                                if (type === 'meshGenerated' && meshData) {
+                                    if (meshData.positions.length > 0) {
+                                        console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
+                                        
+                                        const customMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}`, scene);
+                                        
+                                        const vertexData = new BABYLON.VertexData();
+                                        vertexData.positions = meshData.positions;
+                                        vertexData.normals = meshData.normals;
+                                        vertexData.indices = meshData.indices;
+                                        vertexData.colors = meshData.colors; // <- Aggiunto il Vertex Colors!
+                                        vertexData.applyToMesh(customMesh);
+                                        
+                                        // CORREZIONE POSIZIONAMENTO CHUNK:
+                                        // La posizione finale è la dimensione del chunk moltiplicata per il suo indice
+                                        const worldX = chunkX * CHUNK_SIZE;
+                                        const worldY = chunkY * CHUNK_SIZE;
+                                        const worldZ = chunkZ * CHUNK_SIZE;
+                                        customMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                        
+                                        // CORREZIONE MATERIALE:
+                                        // Crea un materiale che usa i colori dei vertici
+                                        const material = new BABYLON.StandardMaterial("material", scene);
+                                        material.useVertexColors = true;
+                                        customMesh.material = material;
+
+                                    } else {
+                                        console.log(`Thread principale: Il chunk (${chunkX}, ${chunkY}, ${chunkZ}) ha una mesh vuota. Probabilmente aria.`);
+                                    }
+
+                                    worker.terminate();
+                                    workers.delete(workerId);
+                                }
+                            };
+                            
+                            worker.postMessage({
+                                type: 'generateMeshFromChunk',
+                                chunkData: chunkData.buffer, 
+                                chunkX, chunkY, chunkZ
+                            }, [chunkData.buffer]); 
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error("Errore durante il caricamento del file:", error);
+            }
+        }
+        
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>
