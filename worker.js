@@ -15,15 +15,15 @@ const VOXEL_TYPES = {
 // Scegli l'algoritmo da usare.
 // Valori possibili: 'VOXEL', 'GREEDY'
 // ============================================================================
-const MESHING_ALGORITHM = 'VOXEL';
+const MESHING_ALGORITHM = 'GREEDY';
 
 // Mappa i tipi di voxel a colori in formato RGBA (0-1)
 const VoxelColors = {
-    [VOXEL_TYPES.Dirt]: [0.55, 0.45, 0.25, 1.0],
-    [VOXEL_TYPES.Grass]: [0.2, 0.6, 0.2, 1.0],
-    [VOXEL_TYPES.Rock]: [0.4, 0.4, 0.4, 1.0],
-    [VOXEL_TYPES.Cloud]: [1.0, 1.0, 1.0, 0.8],
-    [VOXEL_TYPES.Air]: [0.0, 0.0, 0.0, 0.0]
+    [VOXEL_TYPES.Dirt]: [0.55, 0.45, 0.25, 1.0], // Marrone
+    [VOXEL_TYPES.Grass]: [0.2, 0.6, 0.2, 1.0], // Verde
+    [VOXEL_TYPES.Rock]: [0.4, 0.4, 0.4, 1.0], // Grigio
+    [VOXEL_TYPES.Cloud]: [1.0, 1.0, 1.0, 0.8], // Bianco traslucido
+    [VOXEL_TYPES.Air]: [0.0, 0.0, 0.0, 0.0] // Trasparente
 };
 
 // # Funzione di Meshing Originale (Voxel per Voxel)
@@ -96,7 +96,6 @@ function generateMeshForChunk_Voxel(chunkData) {
 }
 
 // # Funzione di Meshing Ottimizzata (Greedy Meshing)
-// Raggruppa le facce adiacenti in rettangoli più grandi per ridurre i poligoni.
 function generateMeshForChunk_Greedy(chunkData) {
     if (chunkData.length === 0) {
         return { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint16Array(), colors: new Float32Array() };
@@ -131,8 +130,11 @@ function generateMeshForChunk_Greedy(chunkData) {
                     const voxel1 = (x[axis] >= 0) ? chunkData[i1] : 0;
                     const voxel2 = (x[axis] < CHUNK_SIZE) ? chunkData[i2] : 0;
                     
-                    if (voxel1 !== voxel2 && (voxel1 === VOXEL_TYPES.Air || voxel2 === VOXEL_TYPES.Air || voxel1 === VOXEL_TYPES.Cloud || voxel2 === VOXEL_TYPES.Cloud)) {
-                        mask[n] = (voxel1 !== VOXEL_TYPES.Air && voxel1 !== VOXEL_TYPES.Cloud) ? voxel1 : -voxel2;
+                    const isVoxel1Solid = voxel1 !== VOXEL_TYPES.Air && voxel1 !== VOXEL_TYPES.Cloud;
+                    const isVoxel2Solid = voxel2 !== VOXEL_TYPES.Air && voxel2 !== VOXEL_TYPES.Cloud;
+
+                    if (isVoxel1Solid !== isVoxel2Solid) {
+                        mask[n] = isVoxel1Solid ? voxel1 : -voxel2;
                     } else {
                         mask[n] = 0;
                     }
@@ -164,7 +166,6 @@ function generateMeshForChunk_Greedy(chunkData) {
                             if (done) break;
                         }
                         
-                        // Aggiungi la faccia
                         const sign = voxelValue > 0 ? 1 : -1;
                         const normal = [0, 0, 0];
                         normal[axis] = sign;
@@ -196,7 +197,6 @@ function generateMeshForChunk_Greedy(chunkData) {
                             colors.push(...color);
                         }
                         
-                        // CORREZIONE DEGLI INDICI: da [0, 0, 2, 3] a [0, 2, 3]
                         indices.push(indexOffset, indexOffset + 1, indexOffset + 2);
                         indices.push(indexOffset, indexOffset + 2, indexOffset + 3);
                         indexOffset += 4;
