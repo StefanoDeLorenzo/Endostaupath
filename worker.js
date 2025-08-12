@@ -52,7 +52,8 @@ function generateMeshForChunk_Voxel(chunkData) {
         for (let y = 1; y < CHUNK_SIZE_SHELL - 1; y++) {
             for (let z = 1; z < CHUNK_SIZE_SHELL - 1; z++) {
                 const voxel = chunkData[x + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * z)];
-                if (voxel !== VOXEL_TYPES.Air && voxel !== VOXEL_TYPES.Cloud) {
+                //if (voxel !== VOXEL_TYPES.Air && voxel !== VOXEL_TYPES.Cloud) {
+                if (voxel !== VOXEL_TYPES.Air) {
                     
                     const neighborOffsets = [
                         [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
