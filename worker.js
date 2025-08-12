@@ -1,5 +1,4 @@
 // worker.js - Worker per la generazione della mesh da un singolo chunk
-// Questo worker riceve i dati di un chunk dal thread principale.
 
 const CHUNK_SIZE = 30;
 const CHUNK_SIZE_SHELL = 32;
@@ -15,7 +14,7 @@ const VOXEL_TYPES = {
 // # CONFIGURAZIONE ALGORITMO DI MESHING
 // Scegli l'algoritmo da usare.
 // Valori possibili: 'VOXEL', 'GREEDY'
-// =rei=========================================================================
+// ============================================================================
 const MESHING_ALGORITHM = 'GREEDY';
 
 // Mappa i tipi di voxel a colori in formato RGBA (0-1)
@@ -179,7 +178,8 @@ function generateMeshForChunk_Greedy(chunkData) {
                         const v2 = [x[0] + a[0], x[1] + a[1], x[2] + a[2]];
                         const v3 = [x[0] + b[0], x[1] + b[1], x[2] + b[2]];
                         const v4 = [x[0] + a[0] + b[0], x[1] + a[1] + b[1], x[2] + a[2] + b[2]];
-                        
+
+                        // Correzione qui: l'ordine dei vertici per garantire la normale corretta
                         if (sign > 0) {
                              positions.push(v1[0], v1[1], v1[2]);
                              positions.push(v3[0], v3[1], v3[2]);
@@ -191,14 +191,16 @@ function generateMeshForChunk_Greedy(chunkData) {
                             positions.push(v4[0], v4[1], v4[2]);
                             positions.push(v3[0], v3[1], v3[2]);
                         }
-
+                        
+                        // Aggiungi normali e colori
                         for(let i = 0; i < 4; i++) {
                             normals.push(...normal);
                             colors.push(...color);
                         }
                         
+                        // Correzione qui: indici per due triangoli che formano un quad
                         indices.push(indexOffset, indexOffset + 1, indexOffset + 2);
-                        indices.push(indexOffset, indexOffset + 2, indexOffset + 3);
+                        indices.push(indexOffset, indexOffset, indexOffset + 2, indexOffset + 3);
                         indexOffset += 4;
                         
                         for (let aa = 0; aa < h; aa++) {
