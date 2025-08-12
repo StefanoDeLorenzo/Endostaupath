@@ -19,155 +19,174 @@
     <canvas id="renderCanvas"></canvas>
     
     <script>
-        const canvas = document.getElementById("renderCanvas");
-        const engine = new BABYLON.Engine(canvas, true);
-        
-        const workers = new Map();
         const CHUNK_SIZE = 30;
         const CHUNK_SIZE_SHELL = 32;
         const REGION_DIMENSION = 4;
-        
-        const createScene = function () {
-            const scene = new BABYLON.Scene(engine);
-            scene.ambientColor = new BABYLON.Color3(0.4, 0.4, 0.4);
 
-            const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
-            camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
-            camera.attachControl(canvas, true);
-            
-            // Usiamo una luce più semplice e robusta
-            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
-            light.intensity = 0.7;
+        // Classe per gestire la scena, le luci e i materiali
+        class SceneManager {
+            constructor(scene, engine) {
+                this.scene = scene;
+                this.engine = engine;
+                this.workers = new Map();
+                this.sceneMaterials = {};
+                this.initializeScene();
+            }
 
-            if (window.Worker) {
-                loadRegionAndMeshAllChunks(0, 0, 0);
-            } else {
-                console.error("Il tuo browser non supporta i Web Worker.");
+            initializeScene() {
+                this.scene.ambientColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+                this.createCamera();
+                this.createLight();
+            }
+
+            createCamera() {
+                const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), this.scene);
+                camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
+                camera.attachControl(this.engine.get==.canvas, true);
             }
             
-            return scene;
-        };
+            createLight() {
+                const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), this.scene);
+                light.intensity = 0.7;
+            }
 
-        const scene = createScene();
-        
-        const sceneMaterials = {};
-        function getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
-            if (!sceneMaterials[voxelType]) {
-                // Torno a usare lo StandardMaterial che è più semplice da gestire
-                const material = new BABYLON.StandardMaterial(`material_${voxelType}`, scene);
-                material.useVertexColors = true;
+            getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
+                if (!this.sceneMaterials[voxelType]) {
+                    const material = new BABYLON.StandardMaterial(`material_${voxelType}`, this.scene);
+                    material.useVertexColors = true;
+                    
+                    if (isTransparent) {
+                        material.alpha = materialAlpha;
+                        material.hasAlpha = true;
+                        material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+                        material.backFaceCulling = false;
+                    }
+                    
+                    this.sceneMaterials[voxelType] = material;
+                }
+                return this.sceneMaterials[voxelType];
+            }
+
+            getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
+                const dataView = new DataView(buffer);
                 
-                if (isTransparent) {
-                    material.alpha = materialAlpha;
-                    material.hasAlpha = true;
-                    material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
-                    material.backFaceCulling = false;
+                const headerSize = 11;
+                const chunkIndex = chunkZ + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
+                
+                const offsetIndex = headerSize + chunkIndex * 5;
+                const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
+
+                if (chunkFileOffset === 0) {
+                    return null;
                 }
                 
-                sceneMaterials[voxelType] = material;
+                const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
+                const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
+                return new Uint8Array(chunkBuffer);
             }
-            return sceneMaterials[voxelType];
-        }
 
-        function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
-            const dataView = new DataView(buffer);
-            
-            const headerSize = 11;
-            const chunkIndex = chunkZ + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
-            
-            const offsetIndex = headerSize + chunkIndex * 5;
-            const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
+            async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
+                try {
+                    const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
+                    console.log(`Thread principale: Caricamento del file ${regionPath}...`);
 
-            if (chunkFileOffset === 0) {
-                return null;
-            }
-            
-            const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
-            const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
-            return new Uint8Array(chunkBuffer);
-        }
+                    const response = await fetch(regionPath);
+                    if (!response.ok) {
+                        throw new Error(`Impossibile caricare il file: ${response.statusText}`);
+                    }
+                    const buffer = await response.arrayBuffer();
 
-        async function loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
-            try {
-                const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
-                console.log(`Thread principale: Caricamento del file ${regionPath}...`);
-
-                const response = await fetch(regionPath);
-                if (!response.ok) {
-                    throw new Error(`Impossibile caricare il file: ${response.statusText}`);
-                }
-                const buffer = await response.arrayBuffer();
-
-                console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
-                
-                for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
-                    for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
-                        for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
-                            const chunkData = getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
-                            
-                            if (chunkData === null) {
-                                console.log(`Thread principale: Chunk (${chunkX}, ${chunkY}, ${chunkZ}) è vuoto. Salto.`);
-                                continue;
-                            }
-                            
-                            const workerId = `chunk_${chunkX}_${chunkY}_${chunkZ}`;
-                            const worker = new Worker('worker.js');
-                            workers.set(workerId, worker);
-                            
-                            worker.onmessage = (event) => {
-                                const { type, chunkX, chunkY, chunkZ, meshDataByVoxelType, voxelOpacity } = event.data;
+                    console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+                    
+                    for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                        for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                            for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                                const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
                                 
-                                if (type === 'meshGenerated' && meshDataByVoxelType) {
-                                    console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
-                                    
-                                    const worldX = chunkX * CHUNK_SIZE;
-                                    const worldY = chunkY * CHUNK_SIZE;
-                                    const worldZ = chunkZ * CHUNK_SIZE;
-
-                                    for (const voxelType in meshDataByVoxelType) {
-                                        const meshData = meshDataByVoxelType[voxelType];
-
-                                        if (meshData.positions.length > 0) {
-                                            const isTransparent = (voxelOpacity[voxelType] === 'transparent');
-                                            const meshName = `chunk_${chunkX}_${chunkY}_${chunkZ}_${voxelType}`;
-                                            const mesh = new BABYLON.Mesh(meshName, scene);
-                                            const vertexData = new BABYLON.VertexData();
-                                            Object.assign(vertexData, meshData);
-                                            vertexData.applyToMesh(mesh);
-
-                                            const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
-                                            
-                                            mesh.material = getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
-                                            mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                        }
-                                    }
-                                    
-                                    worker.terminate();
-                                    workers.delete(workerId);
+                                if (chunkData === null) {
+                                    console.log(`Thread principale: Chunk (${chunkX}, ${chunkY}, ${chunkZ}) è vuoto. Salto.`);
+                                    continue;
                                 }
-                            };
-                            
-                            worker.postMessage({
-                                type: 'generateMeshFromChunk',
-                                chunkData: chunkData.buffer, 
-                                chunkX, chunkY, chunkZ
-                            }, [chunkData.buffer]); 
+                                
+                                const workerId = `chunk_${chunkX}_${chunkY}_${chunkZ}`;
+                                const worker = new Worker('worker.js');
+                                this.workers.set(workerId, worker);
+                                
+                                worker.onmessage = (event) => {
+                                    const { type, chunkX, chunkY, chunkZ, meshDataByVoxelType, voxelOpacity } = event.data;
+                                    
+                                    if (type === 'meshGenerated' && meshDataByVoxelType) {
+                                        console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
+                                        
+                                        const worldX = chunkX * CHUNK_SIZE;
+                                        const worldY = chunkY * CHUNK_SIZE;
+                                        const worldZ = chunkZ * CHUNK_SIZE;
+
+                                        for (const voxelType in meshDataByVoxelType) {
+                                            const meshData = meshDataByVoxelType[voxelType];
+
+                                            if (meshData.positions.length > 0) {
+                                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+                                                const meshName = `chunk_${chunkX}_${chunkY}_${chunkZ}_${voxelType}`;
+                                                const mesh = new BABYLON.Mesh(meshName, this.scene);
+                                                const vertexData = new BABYLON.VertexData();
+                                                Object.assign(vertexData, meshData);
+                                                vertexData.applyToMesh(mesh);
+
+                                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
+                                                
+                                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
+                                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                            }
+                                        }
+                                        
+                                        worker.terminate();
+                                        this.workers.delete(workerId);
+                                    }
+                                };
+                                
+                                worker.postMessage({
+                                    type: 'generateMeshFromChunk',
+                                    chunkData: chunkData.buffer, 
+                                    chunkX, chunkY, chunkZ
+                                }, [chunkData.buffer]); 
+                            }
                         }
                     }
+                    
+                } catch (error) {
+                    console.error("Errore durante il caricamento del file:", error);
                 }
-                
-            } catch (error) {
-                console.error("Errore durante il caricamento del file:", error);
+            }
+        }
+
+        // Classe principale del gioco
+        class Game {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.engine = new BABYLON.Engine(this.canvas, true);
+                this.scene = new BABYLON.Scene(this.engine);
+                this.sceneManager = new SceneManager(this.scene, this.engine);
+            }
+
+            start() {
+                // Carica la prima regione
+                this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
+
+                // Avvia il loop di rendering
+                this.engine.runRenderLoop(() => {
+                    this.scene.render();
+                });
+
+                window.addEventListener("resize", () => {
+                    this.engine.resize();
+                });
             }
         }
         
-        engine.runRenderLoop(function () {
-            scene.render();
-        });
-
-        window.addEventListener("resize", function () {
-            engine.resize();
-        });
+        // Avvio del gioco
+        const game = new Game("renderCanvas");
+        game.start();
     </script>
 </body>
 </html>
