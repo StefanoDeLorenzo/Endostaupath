@@ -1,11 +1,11 @@
-// generator.js - Generatore di mondi procedurali per voxel
+// generator.js
 
 // Dimensioni logiche del chunk (senza guscio)
 const CHUNK_SIZE_LOGIC = 30;
 const CHUNK_SIZE_WITH_SHELL = 32;
 
 const REGION_CHUNKS = 4;
-const WORLD_HEIGHT = 16; // Altezza del mondo in chunk
+const REGION_HEIGHT = 4; // Altezza della regione in chunk
 
 // Logica per la generazione del rumore di Perlin
 function PerlinNoise(seed) {
@@ -83,7 +83,7 @@ class RegionGenerator {
 
         const voxelData = new Uint8Array(CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC);
         const noiseScale = 0.05;
-        const surfaceHeightOffset = CHUNK_SIZE_LOGIC * WORLD_HEIGHT / 2;
+        const surfaceHeightOffset = CHUNK_SIZE_LOGIC * REGION_HEIGHT / 2;
 
         for (let x = 0; x < CHUNK_SIZE_LOGIC; x++) {
             for (let z = 0; z < CHUNK_SIZE_LOGIC; z++) {
@@ -192,13 +192,13 @@ class RegionGenerator {
         const chunkBuffers = [];
         const indexTable = [];
         let offset = 0;
-        const totalChunks = REGION_CHUNKS * REGION_CHUNKS * WORLD_HEIGHT;
+        const totalChunks = REGION_CHUNKS * REGION_HEIGHT * REGION_CHUNKS;
 
         for (let chunkLocalX = 0; chunkLocalX < REGION_CHUNKS; chunkLocalX++) {
-            for (let chunkLocalY = 0; chunkLocalY < WORLD_HEIGHT; chunkLocalY++) {
+            for (let chunkLocalY = 0; chunkLocalY < REGION_HEIGHT; chunkLocalY++) {
                 for (let chunkLocalZ = 0; chunkLocalZ < REGION_CHUNKS; chunkLocalZ++) {
                     const chunkX = regionX * REGION_CHUNKS + chunkLocalX;
-                    const chunkY = regionY * WORLD_HEIGHT + chunkLocalY;
+                    const chunkY = regionY * REGION_HEIGHT + chunkLocalY;
                     const chunkZ = regionZ * REGION_CHUNKS + chunkLocalZ;
                     
                     const chunkDataBuffer = this.writeChunkWithShell(chunkX, chunkY, chunkZ);
