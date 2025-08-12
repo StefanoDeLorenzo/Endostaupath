@@ -97,40 +97,39 @@
                             workers.set(workerId, worker);
                             
                             worker.onmessage = (event) => {
-                                const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
-                                
-                                if (type === 'meshGenerated' && meshData) {
-                                    if (meshData.positions.length > 0) {
-                                        console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
-                                        
-                                        const customMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}`, scene);
-                                        
-                                        const vertexData = new BABYLON.VertexData();
-                                        vertexData.positions = meshData.positions;
-                                        vertexData.normals = meshData.normals;
-                                        vertexData.indices = meshData.indices;
-                                        vertexData.colors = meshData.colors; // <- Aggiunto il Vertex Colors!
-                                        vertexData.applyToMesh(customMesh);
-                                        
-                                        // CORREZIONE POSIZIONAMENTO CHUNK:
-                                        // La posizione finale è la dimensione del chunk moltiplicata per il suo indice
-                                        const worldX = chunkX * CHUNK_SIZE;
-                                        const worldY = chunkY * CHUNK_SIZE;
-                                        const worldZ = chunkZ * CHUNK_SIZE;
-                                        customMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                        
-                                        // CORREZIONE MATERIALE:
-                                        // Crea un materiale che usa i colori dei vertici
-                                        const material = new BABYLON.StandardMaterial("material", scene);
-                                        material.useVertexColors = true;
+                                const { type, chunkX, chunkY, chunkZ, opaqueMeshData, transparentMeshData } = event.data;
 
+                                if (type === 'meshGenerated' && opaqueMeshData && transparentMeshData) {
+                                    console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
+                                    
+                                    const worldX = chunkX * CHUNK_SIZE;
+                                    const worldY = chunkY * CHUNK_SIZE;
+                                    const worldZ = chunkZ * CHUNK_SIZE;
+
+                                    if (opaqueMeshData.positions.length > 0) {
+                                        const opaqueMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}_opaque`, scene);
+                                        const vertexData = new BABYLON.VertexData();
+                                        Object.assign(vertexData, opaqueMeshData);
+                                        vertexData.applyToMesh(opaqueMesh);
+
+                                        const material = new BABYLON.StandardMaterial("opaqueMaterial", scene);
+                                        material.useVertexColors = true;
+                                        opaqueMesh.material = material;
+                                        opaqueMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                    }
+
+                                    if (transparentMeshData.positions.length > 0) {
+                                        const transparentMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}_transparent`, scene);
+                                        const vertexData = new BABYLON.VertexData();
+                                        Object.assign(vertexData, transparentMeshData);
+                                        vertexData.applyToMesh(transparentMesh);
+
+                                        const material = new BABYLON.StandardMaterial("transparentMaterial", scene);
+                                        material.useVertexColors = true;
                                         material.hasAlpha = true;
                                         material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
-
-                                        customMesh.material = material;
-
-                                    } else {
-                                        console.log(`Thread principale: Il chunk (${chunkX}, ${chunkY}, ${chunkZ}) ha una mesh vuota. Probabilmente aria.`);
+                                        transparentMesh.material = material;
+                                        transparentMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                     }
 
                                     worker.terminate();
