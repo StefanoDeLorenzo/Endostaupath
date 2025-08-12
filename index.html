@@ -35,10 +35,9 @@
             camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
             camera.attachControl(canvas, true);
             
-            // Reintroduciamo la HemisphericLight
+            // Usiamo una luce più semplice e robusta
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
             light.intensity = 0.7;
-            light.specular = new BABYLON.Color3(0.5, 0.5, 0.5);
 
             if (window.Worker) {
                 loadRegionAndMeshAllChunks(0, 0, 0);
@@ -54,11 +53,14 @@
         const sceneMaterials = {};
         function getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
             if (!sceneMaterials[voxelType]) {
-                const material = new BABYLON.PBRMaterial(`material_${voxelType}`, scene);
+                // Torno a usare lo StandardMaterial che è più semplice da gestire
+                const material = new BABYLON.StandardMaterial(`material_${voxelType}`, scene);
                 material.useVertexColors = true;
                 
                 if (isTransparent) {
                     material.alpha = materialAlpha;
+                    material.hasAlpha = true;
+                    material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
                     material.backFaceCulling = false;
                 }
                 
