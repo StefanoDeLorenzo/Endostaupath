@@ -51,16 +51,16 @@
         // Mappa i tipi di voxel a materiali unici per la scena.
         // Se un materiale esiste già, lo riutilizziamo.
         const sceneMaterials = {};
-        function getOrCreateMaterial(voxelType, isTransparent) {
+        function getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
             if (!sceneMaterials[voxelType]) {
                 const material = new BABYLON.StandardMaterial(`material_${voxelType}`, scene);
                 material.useVertexColors = true;
-                
+
                 if (isTransparent) {
                     material.hasAlpha = true;
                     material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+                    material.alpha = materialAlpha; // Nuova riga
                 }
-                
                 sceneMaterials[voxelType] = material;
             }
             return sceneMaterials[voxelType];
@@ -131,6 +131,9 @@
                                             const vertexData = new BABYLON.VertexData();
                                             Object.assign(vertexData, meshData);
                                             vertexData.applyToMesh(mesh);
+
+
+                                            const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
 
                                             mesh.material = getOrCreateMaterial(voxelType, isTransparent);
                                             mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
