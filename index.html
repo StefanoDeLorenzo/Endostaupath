@@ -132,7 +132,10 @@
                                             Object.assign(vertexData, meshData);
                                             vertexData.applyToMesh(mesh);
 
-
+                                            // Riga di debug per verificare il tipo di mesh e la sua trasparenza
+                                            if (isTransparent) {
+                                                console.log(`Mesh trasparente: ${meshName}, Alpha: ${materialAlpha}`);
+                                            }
                                             const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
 
                                             mesh.material = getOrCreateMaterial(voxelType, isTransparent);
