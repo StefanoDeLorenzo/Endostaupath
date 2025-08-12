@@ -32,6 +32,8 @@
                 this.workers = new Map();
                 this.sceneMaterials = {};
                 this.loadedRegions = new Set();
+                this.loadingQueue = [];
+                this.isProcessingQueue = false;
                 this.initializeScene();
             }
 
@@ -101,68 +103,76 @@
                 }
             }
 
-            async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
-                const regionKey = `${regionX},${regionY},${regionZ}`;
-                if (this.loadedRegions.has(regionKey)) {
+            async processLoadingQueue() {
+                if (this.isProcessingQueue) {
                     return;
                 }
-                this.loadedRegions.add(regionKey);
-                
-                console.log(`Thread principale: Avvio caricamento regione (${regionX}, ${regionY}, ${regionZ})`);
-                const buffer = await this.loadRegionDataAsync(regionX, regionY, regionZ);
-                
-                if (!buffer) {
-                    this.loadedRegions.delete(regionKey);
-                    return;
-                }
+                this.isProcessingQueue = true;
 
-                console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
-                
-                for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
-                    for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
-                        for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
-                            const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
-                            if (chunkData === null) {
-                                continue;
-                            }
-                            const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                            const worker = new Worker('worker.js');
-                            this.workers.set(workerId, worker);
-                            
-                            worker.onmessage = (event) => {
-                                const { type, meshDataByVoxelType, voxelOpacity } = event.data;
-                                if (type === 'meshGenerated' && meshDataByVoxelType) {
-                                    const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
-                                    const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
-                                    const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
-                                    for (const voxelType in meshDataByVoxelType) {
-                                        const meshData = meshDataByVoxelType[voxelType];
-                                        if (meshData.positions.length > 0) {
-                                            const isTransparent = (voxelOpacity[voxelType] === 'transparent');
-                                            const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
-                                            const mesh = new BABYLON.Mesh(meshName, this.scene);
-                                            const vertexData = new BABYLON.VertexData();
-                                            Object.assign(vertexData, meshData);
-                                            vertexData.applyToMesh(mesh);
-                                            const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
-                                            mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
-                                            mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                        }
-                                    }
-                                    worker.terminate();
-                                    this.workers.delete(workerId);
+                while (this.loadingQueue.length > 0) {
+                    const { regionX, regionY, regionZ } = this.loadingQueue.shift();
+                    const regionKey = `${regionX},${regionY},${regionZ}`;
+                    
+                    if (this.loadedRegions.has(regionKey)) {
+                        continue;
+                    }
+
+                    console.log(`Thread principale: Avvio caricamento regione (${regionX}, ${regionY}, ${regionZ})`);
+                    const buffer = await this.loadRegionDataAsync(regionX, regionY, regionZ);
+                    
+                    if (!buffer) {
+                        continue;
+                    }
+
+                    this.loadedRegions.add(regionKey);
+                    console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+                    
+                    for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                        for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                            for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                                const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
+                                if (chunkData === null) {
+                                    continue;
                                 }
-                            };
-                            
-                            // Corretto: ora passiamo solo i dati del chunk, non l'intero buffer della regione.
-                            worker.postMessage({
-                                type: 'generateMeshFromChunk',
-                                chunkData: chunkData.buffer,
-                                chunkX, chunkY, chunkZ
-                            }, [chunkData.buffer]);
+                                const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                                const worker = new Worker('worker.js');
+                                this.workers.set(workerId, worker);
+                                
+                                worker.onmessage = (event) => {
+                                    const { type, meshDataByVoxelType, voxelOpacity } = event.data;
+                                    if (type === 'meshGenerated' && meshDataByVoxelType) {
+                                        const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
+                                        const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
+                                        const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
+                                        for (const voxelType in meshDataByVoxelType) {
+                                            const meshData = meshDataByVoxelType[voxelType];
+                                            if (meshData.positions.length > 0) {
+                                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+                                                const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
+                                                const mesh = new BABYLON.Mesh(meshName, this.scene);
+                                                const vertexData = new BABYLON.VertexData();
+                                                Object.assign(vertexData, meshData);
+                                                vertexData.applyToMesh(mesh);
+                                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
+                                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
+                                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                            }
+                                        }
+                                        worker.terminate();
+                                        this.workers.delete(workerId);
+                                    }
+                                };
+                                
+                                worker.postMessage({
+                                    type: 'generateMeshFromChunk',
+                                    chunkData: chunkData.buffer,
+                                    chunkX, chunkY, chunkZ
+                                }, [chunkData.buffer]);
+                            }
                         }
                     }
                 }
+                this.isProcessingQueue = false;
             }
 
             unloadRegion(regionX, regionY, regionZ) {
@@ -182,6 +192,7 @@
                 const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
                 const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
                 const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
+                
                 const regionsToLoad = new Set();
                 for (let x = -RENDER_DISTANCE; x <= RENDER_DISTANCE; x++) {
                     for (let y = -RENDER_DISTANCE; y <= RENDER_DISTANCE; y++) {
@@ -191,10 +202,15 @@
                             const regionZ = currentRegionZ + z;
                             const regionKey = `${regionX},${regionY},${regionZ}`;
                             regionsToLoad.add(regionKey);
-                            this.loadRegionAndMeshAllChunks(regionX, regionY, regionZ);
+                            if (!this.loadedRegions.has(regionKey) && !this.loadingQueue.some(r => r.regionX === regionX && r.regionY === regionY && r.regionZ === regionZ)) {
+                                this.loadingQueue.push({ regionX, regionY, regionZ });
+                            }
                         }
                     }
                 }
+                
+                this.processLoadingQueue();
+
                 const regionsToUnload = new Set(this.loadedRegions);
                 for (const regionKey of regionsToUnload) {
                     if (!regionsToLoad.has(regionKey)) {
