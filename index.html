@@ -25,9 +25,10 @@
 
         // Classe per gestire la scena, le luci e i materiali
         class SceneManager {
-            constructor(scene, engine) {
+            constructor(scene, engine, canvas) {
                 this.scene = scene;
                 this.engine = engine;
+                this.canvas = canvas; // Salva il canvas
                 this.workers = new Map();
                 this.sceneMaterials = {};
                 this.initializeScene();
@@ -172,7 +173,7 @@
                 this.canvas = document.getElementById(canvasId);
                 this.engine = new BABYLON.Engine(this.canvas, true);
                 this.scene = new BABYLON.Scene(this.engine);
-                this.sceneManager = new SceneManager(this.scene, this.engine);
+                this.sceneManager = new SceneManager(this.scene, this.engine, this.canvas);
             }
 
             start() {
