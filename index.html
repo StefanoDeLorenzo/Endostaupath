@@ -31,7 +31,7 @@
             const scene = new BABYLON.Scene(engine);
             
             const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
-            camera.setTarget(new BABYLON.Vector3(60, 0, 60)); // Cambiato il target per centrare la regione
+            camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
             camera.attachControl(canvas, true);
             
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
@@ -48,12 +48,28 @@
 
         const scene = createScene();
         
-        
+        // Mappa i tipi di voxel a materiali unici per la scena.
+        // Se un materiale esiste già, lo riutilizziamo.
+        const sceneMaterials = {};
+        function getOrCreateMaterial(voxelType, isTransparent) {
+            if (!sceneMaterials[voxelType]) {
+                const material = new BABYLON.StandardMaterial(`material_${voxelType}`, scene);
+                material.useVertexColors = true;
+                
+                if (isTransparent) {
+                    material.hasAlpha = true;
+                    material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+                }
+                
+                sceneMaterials[voxelType] = material;
+            }
+            return sceneMaterials[voxelType];
+        }
+
         function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
             const dataView = new DataView(buffer);
             
             const headerSize = 11;
-            // CORREZIONE DELLA FORMULA DELL'INDICE DEL CHUNK
             const chunkIndex = chunkZ + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
             
             const offsetIndex = headerSize + chunkIndex * 5;
@@ -67,7 +83,6 @@
             const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
             return new Uint8Array(chunkBuffer);
         }
-// ...
 
         async function loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
             try {
@@ -97,42 +112,31 @@
                             workers.set(workerId, worker);
                             
                             worker.onmessage = (event) => {
-                                const { type, chunkX, chunkY, chunkZ, opaqueMeshData, transparentMeshData } = event.data;
-
-                                if (type === 'meshGenerated' && opaqueMeshData && transparentMeshData) {
+                                const { type, chunkX, chunkY, chunkZ, meshDataByVoxelType, voxelOpacity } = event.data;
+                                
+                                if (type === 'meshGenerated' && meshDataByVoxelType) {
                                     console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
                                     
                                     const worldX = chunkX * CHUNK_SIZE;
                                     const worldY = chunkY * CHUNK_SIZE;
                                     const worldZ = chunkZ * CHUNK_SIZE;
 
-                                    if (opaqueMeshData.positions.length > 0) {
-                                        const opaqueMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}_opaque`, scene);
-                                        const vertexData = new BABYLON.VertexData();
-                                        Object.assign(vertexData, opaqueMeshData);
-                                        vertexData.applyToMesh(opaqueMesh);
+                                    for (const voxelType in meshDataByVoxelType) {
+                                        const meshData = meshDataByVoxelType[voxelType];
 
-                                        const material = new BABYLON.StandardMaterial("opaqueMaterial", scene);
-                                        material.useVertexColors = true;
-                                        opaqueMesh.material = material;
-                                        opaqueMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                        if (meshData.positions.length > 0) {
+                                            const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+                                            const meshName = `chunk_${chunkX}_${chunkY}_${chunkZ}_${voxelType}`;
+                                            const mesh = new BABYLON.Mesh(meshName, scene);
+                                            const vertexData = new BABYLON.VertexData();
+                                            Object.assign(vertexData, meshData);
+                                            vertexData.applyToMesh(mesh);
+
+                                            mesh.material = getOrCreateMaterial(voxelType, isTransparent);
+                                            mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                        }
                                     }
-
-                                    if (transparentMeshData.positions.length > 0) {
-                                        const transparentMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}_transparent`, scene);
-                                        const vertexData = new BABYLON.VertexData();
-                                        Object.assign(vertexData, transparentMeshData);
-                                        vertexData.applyToMesh(transparentMesh);
-
-                                        const material = new BABYLON.StandardMaterial("transparentMaterial", scene);
-                                        material.useVertexColors = true;
-                                        material.hasAlpha = true;
-                                        material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
-                                        material.alpha = 0.5
-                                        transparentMesh.material = material;
-                                        transparentMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                    }
-
+                                    
                                     worker.terminate();
                                     workers.delete(workerId);
                                 }
