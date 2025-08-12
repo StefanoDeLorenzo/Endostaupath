@@ -22,7 +22,7 @@
         const CHUNK_SIZE = 30;
         const CHUNK_SIZE_SHELL = 32;
         const REGION_DIMENSION = 4;
-        const RENDER_DISTANCE = 1; // Raggio di regioni da caricare attorno al giocatore
+        const RENDER_DISTANCE = 1;
 
         class SceneManager {
             constructor(scene, engine, canvas) {
@@ -31,7 +31,7 @@
                 this.canvas = canvas;
                 this.workers = new Map();
                 this.sceneMaterials = {};
-                this.loadedRegions = new Set(); // Mantiene traccia delle regioni caricate
+                this.loadedRegions = new Set();
                 this.initializeScene();
             }
 
@@ -86,76 +86,86 @@
                 return new Uint8Array(chunkBuffer);
             }
 
+            // Metodo asincrono per caricare i dati della regione senza bloccare il thread principale
+            async loadRegionDataAsync(regionX, regionY, regionZ) {
+                const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
+                try {
+                    const response = await fetch(regionPath);
+                    if (!response.ok) {
+                        console.log(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
+                        return null;
+                    }
+                    return await response.arrayBuffer();
+                } catch (error) {
+                    console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
+                    return null;
+                }
+            }
+
             async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
-                // Previene il caricamento di una regione già caricata
                 const regionKey = `${regionX},${regionY},${regionZ}`;
                 if (this.loadedRegions.has(regionKey)) {
                     return;
                 }
                 this.loadedRegions.add(regionKey);
+                
+                console.log(`Thread principale: Avvio caricamento regione (${regionX}, ${regionY}, ${regionZ})`);
+                const buffer = await this.loadRegionDataAsync(regionX, regionY, regionZ);
+                
+                if (!buffer) {
+                    this.loadedRegions.delete(regionKey);
+                    return;
+                }
 
-                try {
-                    const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
-                    console.log(`Thread principale: Caricamento del file ${regionPath}...`);
-                    const response = await fetch(regionPath);
-                    if (!response.ok) {
-                        console.log(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
-                        this.loadedRegions.delete(regionKey);
-                        return; // Non caricare nulla se la regione non esiste
-                    }
-                    const buffer = await response.arrayBuffer();
-                    console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
-                    
-                    for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
-                        for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
-                            for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
-                                const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
-                                if (chunkData === null) {
-                                    continue;
-                                }
-                                const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                                const worker = new Worker('worker.js');
-                                this.workers.set(workerId, worker);
-                                worker.onmessage = (event) => {
-                                    const { type, chunkX, chunkY, chunkZ, meshDataByVoxelType, voxelOpacity } = event.data;
-                                    if (type === 'meshGenerated' && meshDataByVoxelType) {
-                                        const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
-                                        const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
-                                        const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
-                                        for (const voxelType in meshDataByVoxelType) {
-                                            const meshData = meshDataByVoxelType[voxelType];
-                                            if (meshData.positions.length > 0) {
-                                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
-                                                const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
-                                                const mesh = new BABYLON.Mesh(meshName, this.scene);
-                                                const vertexData = new BABYLON.VertexData();
-                                                Object.assign(vertexData, meshData);
-                                                vertexData.applyToMesh(mesh);
-                                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
-                                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
-                                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                            }
-                                        }
-                                        worker.terminate();
-                                        this.workers.delete(workerId);
-                                    }
-                                };
-                                worker.postMessage({
-                                    type: 'generateMeshFromChunk',
-                                    chunkData: chunkData.buffer, 
-                                    chunkX, chunkY, chunkZ
-                                }, [chunkData.buffer]); 
+                console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+                
+                for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                    for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                        for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                            const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
+                            if (chunkData === null) {
+                                continue;
                             }
+                            const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                            const worker = new Worker('worker.js');
+                            this.workers.set(workerId, worker);
+                            
+                            // Logica di gestione del worker
+                            worker.onmessage = (event) => {
+                                const { type, meshDataByVoxelType, voxelOpacity } = event.data;
+                                if (type === 'meshGenerated' && meshDataByVoxelType) {
+                                    const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
+                                    const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
+                                    const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
+                                    for (const voxelType in meshDataByVoxelType) {
+                                        const meshData = meshDataByVoxelType[voxelType];
+                                        if (meshData.positions.length > 0) {
+                                            const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+                                            const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
+                                            const mesh = new BABYLON.Mesh(meshName, this.scene);
+                                            const vertexData = new BABYLON.VertexData();
+                                            Object.assign(vertexData, meshData);
+                                            vertexData.applyToMesh(mesh);
+                                            const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
+                                            mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
+                                            mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                        }
+                                    }
+                                    worker.terminate();
+                                    this.workers.delete(workerId);
+                                }
+                            };
+                            worker.postMessage({
+                                type: 'generateMeshFromChunk',
+                                chunkData: chunkData.buffer, 
+                                chunkX, chunkY, chunkZ
+                            }, [chunkData.buffer]); 
                         }
                     }
-                } catch (error) {
-                    console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
-                    this.loadedRegions.delete(regionKey);
                 }
             }
 
             unloadRegion(regionX, regionY, regionZ) {
-                // Implementa la logica per scaricare le mesh di una regione
                 const regionKey = `${regionX},${regionY},${regionZ}`;
                 if (!this.loadedRegions.has(regionKey)) {
                     return;
@@ -205,7 +215,6 @@
             }
 
             start() {
-                // Avvia il loop di rendering
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
                 });
@@ -214,14 +223,12 @@
                     this.engine.resize();
                 });
 
-                // Avvia il timer per aggiornare le regioni
                 setInterval(() => {
                     this.sceneManager.updateRegions(this.player.position);
-                }, 1000); // Controlla la posizione ogni secondo
+                }, 1000);
             }
         }
         
-        // Avvio del gioco
         const game = new Game("renderCanvas");
         game.start();
     </script>
