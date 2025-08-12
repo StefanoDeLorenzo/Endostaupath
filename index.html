@@ -48,11 +48,13 @@
 
         const scene = createScene();
         
+        
         function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
             const dataView = new DataView(buffer);
             
             const headerSize = 11;
-            const chunkIndex = chunkX + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
+            // CORREZIONE DELLA FORMULA DELL'INDICE DEL CHUNK
+            const chunkIndex = chunkZ + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
             
             const offsetIndex = headerSize + chunkIndex * 5;
             const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
@@ -65,6 +67,7 @@
             const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
             return new Uint8Array(chunkBuffer);
         }
+// ...
 
         async function loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
             try {
