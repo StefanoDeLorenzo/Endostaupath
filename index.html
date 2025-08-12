@@ -11,7 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
         // Impostazioni del mondo
-        const CHUNK_SIZE_LOGIC = 30; // La nostra unità di base
+        const CHUNK_SIZE_LOGIC = 30;
         const REGION_CHUNKS = 4;
         const REGION_HEIGHT = 4;
         
@@ -33,18 +33,15 @@
 
         // Gestione dei worker
         const worker = new Worker('worker.js');
-        const regionWorker = new Worker('regionWorker.js'); // Usiamo un worker dedicato per caricare le regioni
         const chunks = new Map();
         const loadingRegions = new Map();
         const regions = new Map();
 
-        // Variabili del giocatore per il caricamento dinamico
         let playerChunkX = 0;
         let playerChunkY = 0;
         let playerChunkZ = 0;
-        const renderDistance = 2; // Raggio di chunk da caricare
+        const renderDistance = 2;
         
-        // Funzione per inviare i dati al worker
         function loadChunk(chunkX, chunkY, chunkZ) {
             const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
             if (chunks.has(chunkKey)) return;
@@ -52,12 +49,13 @@
             const regionX = Math.floor(chunkX / REGION_CHUNKS);
             const regionY = Math.floor(chunkY / REGION_HEIGHT);
             const regionZ = Math.floor(chunkZ / REGION_CHUNKS);
-            const regionKey = `r.${regionX}.${regionY}.${regionZ}.voxl`;
+
+            // CORREZIONE: Aggiunto il percorso relativo "./regions/"
+            const regionKey = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
 
             if (!regions.has(regionKey)) {
                 if (!loadingRegions.has(regionKey)) {
                     loadingRegions.set(regionKey, true);
-                    // Richiesta di caricamento asincrono della regione
                     fetch(regionKey)
                         .then(response => {
                             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -80,7 +78,6 @@
             const chunkLocalY = chunkY % REGION_HEIGHT;
             const chunkLocalZ = chunkZ % REGION_CHUNKS;
             
-            // Invia al worker le informazioni necessarie per generare la mesh
             worker.postMessage({
                 type: 'loadChunkFromRegion',
                 regionBuffers: { [regionKey]: regions.get(regionKey) },
@@ -90,7 +87,6 @@
             chunks.set(chunkKey, 'loading');
         }
 
-        // Listener per i messaggi dal worker
         worker.onmessage = (event) => {
             if (event.data.type === 'chunkGenerated') {
                 const { chunkX, chunkY, chunkZ, meshData } = event.data;
@@ -109,9 +105,6 @@
                     
                     const mesh = new THREE.Mesh(geometry, material);
                     
-                    // POSIZIONAMENTO CORRETTO:
-                    // I chunk logici di 30x30x30 sono adiacenti.
-                    // Moltiplichiamo le coordinate del chunk per la sua dimensione logica (30)
                     mesh.position.set(
                         chunkX * CHUNK_SIZE_LOGIC,
                         chunkY * CHUNK_SIZE_LOGIC,
@@ -126,33 +119,11 @@
             }
         };
 
-        // Aggiorna i chunk in base alla posizione del giocatore
         function updateChunks() {
-            const currentChunkX = Math.floor(camera.position.x / CHUNK_SIZE_LOGIC);
-            const currentChunkY = Math.floor(camera.position.y / CHUNK_SIZE_LOGIC);
-            const currentChunkZ = Math.floor(camera.position.z / CHUNK_SIZE_LOGIC);
-
-            if (currentChunkX !== playerChunkX || currentChunkY !== playerChunkY || currentChunkZ !== playerChunkZ) {
-                // Svuota la scena e ricarica i chunk in un'applicazione reale
-                // Per ora, ci limitiamo a caricare i nuovi chunk
-                playerChunkX = currentChunkX;
-                playerChunkY = currentChunkY;
-                playerChunkZ = currentChunkZ;
-
-                for (let x = -renderDistance; x <= renderDistance; x++) {
-                    for (let y = -renderDistance; y <= renderDistance; y++) {
-                        for (let z = -renderDistance; z <= renderDistance; z++) {
-                            const chunkX = playerChunkX + x;
-                            const chunkY = playerChunkY + y;
-                            const chunkZ = playerChunkZ + z;
-                            loadChunk(chunkX, chunkY, chunkZ);
-                        }
-                    }
-                }
-            }
+            // Per il momento carichiamo solo un chunk per test
+            loadChunk(0, 0, 0); 
         }
 
-        // Animazione del rendering
         function animate() {
             requestAnimationFrame(animate);
             renderer.render(scene, camera);
