@@ -31,6 +31,10 @@
         const workerQueue = [];
         let isWorkerBusy = false;
 
+        const CHUNK_SIZE = 32;
+        const REGION_CHUNKS = 4;
+        const WORLD_HEIGHT_IN_REGIONS = 16; // Altezza del mondo in chunk
+
         class VoxelChunk {
             constructor(x, y, z, chunkSize, scene, meshData) {
                 this.chunkX = x;
@@ -105,10 +109,11 @@
                 return `${x},${y},${z}`;
             }
 
-            getRegionKey(chunkX, chunkZ) {
+            getRegionKey(chunkX, chunkY, chunkZ) {
                 const regionX = Math.floor(chunkX / this.regionChunks);
+                const regionY = Math.floor(chunkY / WORLD_HEIGHT_IN_REGIONS);
                 const regionZ = Math.floor(chunkZ / this.regionChunks);
-                return `r.${regionX}.${regionZ}.voxl`;
+                return `r.${regionX}.${regionY}.${regionZ}.voxl`;
             }
 
             createChunkBoundingInfo(x, y, z) {
@@ -124,20 +129,23 @@
                 }
                 this.chunksToLoad.add(chunkKey);
                 
-                const regionKeys = new Set();
-                for (let x = -1; x <= 1; x++) {
-                    for (let z = -1; z <= 1; z++) {
-                        const neighborChunkX = chunkX + x;
-                        const neighborChunkZ = chunkZ + z;
-                        regionKeys.add(this.getRegionKey(neighborChunkX, neighborChunkZ));
-                    }
-                }
-                
-                const fetchPromises = Array.from(regionKeys).map(regionKey => this.loadRegionFile(regionKey));
+                const regionKey = this.getRegionKey(chunkX, chunkY, chunkZ);
 
-                Promise.all(fetchPromises)
+                this.loadRegionFile(regionKey)
                     .then(() => {
-                        workerQueue.push({ chunkX, chunkY, chunkZ });
+                        const regionX = Math.floor(chunkX / this.regionChunks);
+                        const regionY = Math.floor(chunkY / WORLD_HEIGHT_IN_REGIONS);
+                        const regionZ = Math.floor(chunkZ / this.regionChunks);
+                        
+                        const chunkLocalX = (chunkX % this.regionChunks + this.regionChunks) % this.regionChunks;
+                        const chunkLocalY = (chunkY % WORLD_HEIGHT_IN_REGIONS + WORLD_HEIGHT_IN_REGIONS) % WORLD_HEIGHT_IN_REGIONS;
+                        const chunkLocalZ = (chunkZ % this.regionChunks + this.regionChunks) % this.regionChunks;
+
+                        workerQueue.push({
+                            chunkX, chunkY, chunkZ,
+                            regionKey,
+                            chunkLocalX, chunkLocalY, chunkLocalZ
+                        });
                         this.processWorkerQueue();
                     })
                     .catch(error => {
@@ -189,34 +197,26 @@
                 
                 isWorkerBusy = true;
                 const job = workerQueue.shift();
-
+                
+                const regionBuffer = regions.get(job.regionKey);
                 const regionBuffers = {};
-                const transferableObjects = [];
-
-                const regionKeys = new Set();
-                for (let x = -1; x <= 1; x++) {
-                    for (let z = -1; z <= 1; z++) {
-                        const neighborChunkX = job.chunkX + x;
-                        const neighborChunkZ = job.chunkZ + z;
-                        regionKeys.add(this.getRegionKey(neighborChunkX, neighborChunkZ));
-                    }
-                }
-
-                for (const regionKey of regionKeys) {
-                    const buffer = regions.get(regionKey);
-                    if (buffer) {
-                         const bufferSlice = buffer.slice();
-                         regionBuffers[regionKey] = bufferSlice;
-                         transferableObjects.push(bufferSlice);
-                    }
+                if (regionBuffer) {
+                    regionBuffers[job.regionKey] = regionBuffer.slice();
+                } else {
+                    regionBuffers[job.regionKey] = new ArrayBuffer(0);
                 }
                 
+                const transferableObjects = [regionBuffers[job.regionKey]];
+
                 this.worker.postMessage({
                     type: 'loadChunkFromRegion',
                     regionBuffers: regionBuffers,
                     chunkX: job.chunkX,
                     chunkY: job.chunkY,
-                    chunkZ: job.chunkZ
+                    chunkZ: job.chunkZ,
+                    chunkLocalX: job.chunkLocalX,
+                    chunkLocalY: job.chunkLocalY,
+                    chunkLocalZ: job.chunkLocalZ,
                 }, transferableObjects);
             }
 
@@ -242,17 +242,14 @@
                 const { chunkX, chunkY, chunkZ } = this.getChunkCoordinates(cameraPosition);
 
                 const newVisibleChunks = new Set();
-                const renderDistanceXZ = this.renderDistance;
-                const renderDistanceY = 1;
 
-                for (let x = chunkX - renderDistanceXZ; x <= chunkX + renderDistanceXZ; x++) {
-                    for (let y = chunkY - renderDistanceY; y <= chunkY + renderDistanceY; y++) {
-                        for (let z = chunkZ - renderDistanceXZ; z <= chunkZ + renderDistanceXZ; z++) {
+                for (let x = chunkX - this.renderDistance; x <= chunkX + this.renderDistance; x++) {
+                    for (let y = chunkY - this.renderDistance; y <= chunkY + this.renderDistance; y++) { // 💡 Iterazione sull'asse Y
+                        for (let z = chunkZ - this.renderDistance; z <= chunkZ + this.renderDistance; z++) {
                             const chunkKey = this.getChunkKey(x, y, z);
                             
                             const chunkBoundingInfo = this.createChunkBoundingInfo(x, y, z);
                             
-                            // 💡 SINTASSI CORRETTA per il frustum culling
                             if (camera.isInFrustum(chunkBoundingInfo)) {
                                 newVisibleChunks.add(chunkKey);
                             }
@@ -332,10 +329,7 @@
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
             light.intensity = 0.7;
 
-            const chunkSize = 32;
-            const regionChunks = 4;
-            const renderDistance = 10;
-            const chunkManager = new ChunkManager(scene, chunkSize, regionChunks, renderDistance);
+            const chunkManager = new ChunkManager(scene, CHUNK_SIZE, REGION_CHUNKS, 10);
 
             scene.onBeforeRenderObservable.add(() => {
                 chunkManager.updateChunks(camera.position, camera); 
