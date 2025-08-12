@@ -48,16 +48,19 @@
 
         const scene = createScene();
         
-        // Nuova funzione per estrarre i dati del singolo chunk da un ArrayBuffer
+        // FUNZIONE DI LETTURA CORRETTA
         function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
             const dataView = new DataView(buffer);
             
             const headerSize = 11;
             const chunkIndex = chunkX + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkZ);
-            const chunkFileOffset = dataView.getUint32(headerSize + chunkIndex * 5, false);
+            
+            // L'offset è memorizzato su 3 byte, non su 4 come un Uint32
+            const offsetIndex = headerSize + chunkIndex * 5;
+            const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
 
             if (chunkFileOffset === 0) {
-                return new Uint8Array(0);
+                return null; // Restituisci null per i chunk vuoti
             }
             
             const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
@@ -82,9 +85,8 @@
                     for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
                         for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
                             const chunkData = getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
-
-                            // Salta i chunk vuoti per evitare errori di Babylon.js
-                            if (chunkData.length === 0) {
+                            
+                            if (chunkData === null) {
                                 console.log(`Thread principale: Chunk (${chunkX}, ${chunkY}, ${chunkZ}) è vuoto. Salto.`);
                                 continue;
                             }
@@ -125,10 +127,9 @@
                                 }
                             };
                             
-                            // Invia il piccolo ArrayBuffer al worker
                             worker.postMessage({
                                 type: 'generateMeshFromChunk',
-                                chunkData: chunkData.buffer, // Invia il buffer del chunk
+                                chunkData: chunkData.buffer, 
                                 chunkX, chunkY, chunkZ
                             }, [chunkData.buffer]); 
                         }
