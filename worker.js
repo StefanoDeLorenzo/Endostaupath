@@ -15,7 +15,7 @@ const VOXEL_TYPES = {
 // # CONFIGURAZIONE ALGORITMO DI MESHING
 // Scegli l'algoritmo da usare.
 // Valori possibili: 'VOXEL', 'GREEDY'
-// ============================================================================
+// =rei=========================================================================
 const MESHING_ALGORITHM = 'GREEDY';
 
 // Mappa i tipi di voxel a colori in formato RGBA (0-1)
@@ -110,9 +110,9 @@ function generateMeshForChunk_Greedy(chunkData) {
     let indexOffset = 0;
 
     const dims = [CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE];
-    const visited = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
-
-    // Iterazione su ogni asse (X, Y, Z) per generare le facce
+    const mask = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
+    
+    // Iterate su ogni asse
     for (let axis = 0; axis < 3; axis++) {
         const u = (axis + 1) % 3;
         const v = (axis + 2) % 3;
@@ -120,10 +120,10 @@ function generateMeshForChunk_Greedy(chunkData) {
         const q = [0, 0, 0];
         q[axis] = 1;
 
-        const mask = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
-        
+        // Iterate sulle fette
         for (x[axis] = -1; x[axis] < CHUNK_SIZE; x[axis]++) {
             let n = 0;
+            // Costruisci la maschera per la faccia corrente
             for (x[v] = 0; x[v] < CHUNK_SIZE; x[v]++) {
                 for (x[u] = 0; x[u] < CHUNK_SIZE; x[u]++) {
                     const i1 = (x[0] + 1) + CHUNK_SIZE_SHELL * ((x[1] + 1) + CHUNK_SIZE_SHELL * (x[2] + 1));
@@ -132,8 +132,8 @@ function generateMeshForChunk_Greedy(chunkData) {
                     const voxel1 = (x[axis] >= 0) ? chunkData[i1] : 0;
                     const voxel2 = (x[axis] < CHUNK_SIZE) ? chunkData[i2] : 0;
                     
-                    if (voxel1 !== voxel2 && (voxel1 === VOXEL_TYPES.Air || voxel2 === VOXEL_TYPES.Air)) {
-                         mask[n] = (voxel1 !== VOXEL_TYPES.Air) ? voxel1 : -voxel2;
+                    if (voxel1 !== voxel2 && (voxel1 === VOXEL_TYPES.Air || voxel2 === VOXEL_TYPES.Air || voxel1 === VOXEL_TYPES.Cloud || voxel2 === VOXEL_TYPES.Cloud)) {
+                        mask[n] = (voxel1 !== VOXEL_TYPES.Air && voxel1 !== VOXEL_TYPES.Cloud) ? voxel1 : -voxel2;
                     } else {
                         mask[n] = 0;
                     }
@@ -141,41 +141,37 @@ function generateMeshForChunk_Greedy(chunkData) {
                 }
             }
 
+            // Genera la mesh usando la maschera
             n = 0;
             for (x[v] = 0; x[v] < CHUNK_SIZE; x[v]++) {
                 for (x[u] = 0; x[u] < CHUNK_SIZE; x[u]++) {
                     if (mask[n] !== 0) {
-                        let w = 1;
-                        let h = 1;
-                        let a;
-                        let b;
-
+                        const voxelValue = mask[n];
+                        
                         // Trova la larghezza del rettangolo
-                        for (w = 1; x[u] + w < CHUNK_SIZE && mask[n + w] === mask[n]; w++) {}
-
+                        let w = 1;
+                        for (; x[u] + w < CHUNK_SIZE && mask[n + w] === voxelValue; w++) {}
+                        
                         // Trova l'altezza del rettangolo
+                        let h = 1;
                         let done = false;
-                        for (h = 1; x[v] + h < CHUNK_SIZE; h++) {
-                            for (b = 0; b < w; b++) {
-                                if (mask[n + b + h * CHUNK_SIZE] !== mask[n]) {
+                        for (; x[v] + h < CHUNK_SIZE; h++) {
+                            for (let i = 0; i < w; i++) {
+                                if (mask[n + i + h * CHUNK_SIZE] !== voxelValue) {
                                     done = true;
                                     break;
                                 }
                             }
                             if (done) break;
                         }
-
+                        
                         // Aggiungi la faccia
-                        const voxel = mask[n];
-                        const sign = voxel > 0 ? 1 : -1;
-                        const dir = voxel > 0 ? 1 : 0;
-                        const color = VoxelColors[Math.abs(voxel)];
-
-                        const vert = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                        const sign = voxelValue > 0 ? 1 : -1;
                         const normal = [0, 0, 0];
                         normal[axis] = sign;
+                        const color = VoxelColors[Math.abs(voxelValue)];
                         
-                        // Calcola le coordinate dei vertici
+                        // Vertici della faccia
                         const v1 = [x[0], x[1], x[2]];
                         const v2 = [x[0], x[1], x[2]];
                         const v3 = [x[0], x[1], x[2]];
@@ -186,10 +182,11 @@ function generateMeshForChunk_Greedy(chunkData) {
                         v3[u] += w;
                         v3[v] += h;
                         
-                        if (dir === 1) {
+                        // Aggiungi i vertici in base alla direzione della faccia
+                        if (sign > 0) {
                             positions.push(v1[0], v1[1], v1[2]);
-                            positions.push(v2[0], v2[1], v2[2]);
                             positions.push(v3[0], v3[1], v3[2]);
+                            positions.push(v2[0], v2[1], v2[2]);
                             positions.push(x[0], x[1], x[2]);
                         } else {
                             positions.push(x[0], x[1], x[2]);
@@ -197,16 +194,21 @@ function generateMeshForChunk_Greedy(chunkData) {
                             positions.push(v3[0], v3[1], v3[2]);
                             positions.push(v1[0], v1[1], v1[2]);
                         }
+                        
+                        // Aggiungi normali e colori
+                        for(let i = 0; i < 4; i++) {
+                            normals.push(...normal);
+                            colors.push(...color);
+                        }
 
-                        normals.push(normal[0], normal[1], normal[2], normal[0], normal[1], normal[2], normal[0], normal[1], normal[2], normal[0], normal[1], normal[2]);
-                        colors.push(...color, ...color, ...color, ...color);
-
-                        indices.push(indexOffset + 0, indexOffset + 1, indexOffset + 2, indexOffset + 0, indexOffset + 2, indexOffset + 3);
+                        // Aggiungi indici per due triangoli
+                        indices.push(indexOffset, indexOffset + 1, indexOffset + 2);
+                        indices.push(indexOffset, indexOffset + 2, indexOffset + 3);
                         indexOffset += 4;
-
-                        // Marchia i voxel come visitati
-                        for (a = 0; a < h; a++) {
-                            for (b = 0; b < w; b++) {
+                        
+                        // Marchia i voxel come "visitati"
+                        for (let a = 0; a < h; a++) {
+                            for (let b = 0; b < w; b++) {
                                 mask[n + b + a * CHUNK_SIZE] = 0;
                             }
                         }
@@ -216,7 +218,7 @@ function generateMeshForChunk_Greedy(chunkData) {
             }
         }
     }
-    
+
     return {
         positions: new Float32Array(positions),
         normals: new Float32Array(normals),
