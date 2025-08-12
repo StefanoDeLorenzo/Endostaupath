@@ -108,7 +108,7 @@ function generateMeshForChunk_Greedy(chunkData) {
     const indices = [];
     const colors = [];
     let indexOffset = 0;
-
+    
     const dims = [CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE];
     const mask = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
     
@@ -171,45 +171,39 @@ function generateMeshForChunk_Greedy(chunkData) {
                         normal[axis] = sign;
                         const color = VoxelColors[Math.abs(voxelValue)];
                         
-                        // Vertici della faccia
+                        const a = [0, 0, 0], b = [0, 0, 0];
+                        a[u] = w;
+                        b[v] = h;
+                        
                         const v1 = [x[0], x[1], x[2]];
-                        const v2 = [x[0], x[1], x[2]];
-                        const v3 = [x[0], x[1], x[2]];
-                        const v4 = [x[0], x[1], x[2]];
-
-                        v1[u] += w;
-                        v2[v] += h;
-                        v3[u] += w;
-                        v3[v] += h;
+                        const v2 = [x[0] + a[0], x[1] + a[1], x[2] + a[2]];
+                        const v3 = [x[0] + b[0], x[1] + b[1], x[2] + b[2]];
+                        const v4 = [x[0] + a[0] + b[0], x[1] + a[1] + b[1], x[2] + a[2] + b[2]];
                         
-                        // Aggiungi i vertici in base alla direzione della faccia
                         if (sign > 0) {
-                            positions.push(v1[0], v1[1], v1[2]);
-                            positions.push(v3[0], v3[1], v3[2]);
-                            positions.push(v2[0], v2[1], v2[2]);
-                            positions.push(x[0], x[1], x[2]);
+                             positions.push(v1[0], v1[1], v1[2]);
+                             positions.push(v3[0], v3[1], v3[2]);
+                             positions.push(v4[0], v4[1], v4[2]);
+                             positions.push(v2[0], v2[1], v2[2]);
                         } else {
-                            positions.push(x[0], x[1], x[2]);
-                            positions.push(v2[0], v2[1], v2[2]);
-                            positions.push(v3[0], v3[1], v3[2]);
                             positions.push(v1[0], v1[1], v1[2]);
+                            positions.push(v2[0], v2[1], v2[2]);
+                            positions.push(v4[0], v4[1], v4[2]);
+                            positions.push(v3[0], v3[1], v3[2]);
                         }
-                        
-                        // Aggiungi normali e colori
+
                         for(let i = 0; i < 4; i++) {
                             normals.push(...normal);
                             colors.push(...color);
                         }
-
-                        // Aggiungi indici per due triangoli
+                        
                         indices.push(indexOffset, indexOffset + 1, indexOffset + 2);
                         indices.push(indexOffset, indexOffset + 2, indexOffset + 3);
                         indexOffset += 4;
                         
-                        // Marchia i voxel come "visitati"
-                        for (let a = 0; a < h; a++) {
-                            for (let b = 0; b < w; b++) {
-                                mask[n + b + a * CHUNK_SIZE] = 0;
+                        for (let aa = 0; aa < h; aa++) {
+                            for (let bb = 0; bb < w; bb++) {
+                                mask[n + bb + aa * CHUNK_SIZE] = 0;
                             }
                         }
                     }
