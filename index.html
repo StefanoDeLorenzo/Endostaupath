@@ -86,7 +86,6 @@
                 return new Uint8Array(chunkBuffer);
             }
 
-            // Metodo asincrono per caricare i dati della regione senza bloccare il thread principale
             async loadRegionDataAsync(regionX, regionY, regionZ) {
                 const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
                 try {
@@ -130,7 +129,6 @@
                             const worker = new Worker('worker.js');
                             this.workers.set(workerId, worker);
                             
-                            // Logica di gestione del worker
                             worker.onmessage = (event) => {
                                 const { type, meshDataByVoxelType, voxelOpacity } = event.data;
                                 if (type === 'meshGenerated' && meshDataByVoxelType) {
@@ -155,11 +153,13 @@
                                     this.workers.delete(workerId);
                                 }
                             };
+                            
+                            // Corretto: ora passiamo solo i dati del chunk, non l'intero buffer della regione.
                             worker.postMessage({
                                 type: 'generateMeshFromChunk',
-                                chunkData: chunkData.buffer, 
+                                chunkData: chunkData.buffer,
                                 chunkX, chunkY, chunkZ
-                            }, [chunkData.buffer]); 
+                            }, [chunkData.buffer]);
                         }
                     }
                 }
