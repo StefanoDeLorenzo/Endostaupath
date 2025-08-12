@@ -1,156 +1,141 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Voxel World</title>
+    <meta charset="UTF-8">
+    <title>Voxel Engine con Babylon.js</title>
     <style>
-        body { margin: 0; }
-        canvas { display: block; }
+        body, html, canvas {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
     </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 </head>
 <body>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <canvas id="renderCanvas"></canvas>
+    
     <script>
-        // Impostazioni del mondo
-        const CHUNK_SIZE_LOGIC = 30;
-        const REGION_CHUNKS = 4;
-        const REGION_HEIGHT = 4;
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
         
-        // Setup di base di Three.js
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+        let worker;
+        const CHUNK_SIZE = 30; // Dimensione logica del chunk
 
-        // Posiziona la telecamera inizialmente a una distanza ragionevole
-        camera.position.set(CHUNK_SIZE_LOGIC * 0.5, CHUNK_SIZE_LOGIC * 2, CHUNK_SIZE_LOGIC * 2);
-
-        // Gestione delle luci
-        const ambientLight = new THREE.AmbientLight(0x404040, 2);
-        scene.add(ambientLight);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(1, 1, 1);
-        scene.add(directionalLight);
-
-        // Gestione dei worker
-        const worker = new Worker('worker.js');
-        const chunks = new Map();
-        const loadingRegions = new Map();
-        const regions = new Map();
-
-        // Variabili del giocatore per il caricamento dinamico
-        let playerChunkX = 0;
-        let playerChunkY = 0;
-        let playerChunkZ = 0;
-        const renderDistance = 2;
-        
-        function loadChunk(chunkX, chunkY, chunkZ) {
-            const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
-            if (chunks.has(chunkKey)) return;
-
-            const regionX = Math.floor(chunkX / REGION_CHUNKS);
-            const regionY = Math.floor(chunkY / REGION_HEIGHT);
-            const regionZ = Math.floor(chunkZ / REGION_CHUNKS);
-
-            const regionKey = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
-
-            if (!regions.has(regionKey)) {
-                if (!loadingRegions.has(regionKey)) {
-                    loadingRegions.set(regionKey, true);
-                    fetch(regionKey)
-                        .then(response => {
-                            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                            return response.arrayBuffer();
-                        })
-                        .then(buffer => {
-                            regions.set(regionKey, buffer);
-                            loadingRegions.delete(regionKey);
-                            loadChunk(chunkX, chunkY, chunkZ);
-                        })
-                        .catch(e => {
-                            console.error(`Errore nel caricamento della regione ${regionKey}:`, e);
-                            loadingRegions.delete(regionKey);
-                        });
-                }
-                return;
-            }
-
-            const chunkLocalX = ((chunkX % REGION_CHUNKS) + REGION_CHUNKS) % REGION_CHUNKS;
-            const chunkLocalY = ((chunkY % REGION_HEIGHT) + REGION_HEIGHT) % REGION_HEIGHT;
-            const chunkLocalZ = ((chunkZ % REGION_CHUNKS) + REGION_CHUNKS) % REGION_CHUNKS;
+        const createScene = function () {
+            const scene = new BABYLON.Scene(engine);
             
-            worker.postMessage({
-                type: 'loadChunkFromRegion',
-                regionBuffers: { [regionKey]: regions.get(regionKey) },
-                chunkX, chunkY, chunkZ,
-                chunkLocalX, chunkLocalY, chunkLocalZ
-            });
-            chunks.set(chunkKey, 'loading');
-        }
+            // Setup della telecamera e delle luci
+            const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(30, 30, -30), scene);
+            camera.setTarget(BABYLON.Vector3.Zero());
+            camera.attachControl(canvas, true);
+            
+            // Aggiunge la luce per illuminare la scena
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.7;
 
-        worker.onmessage = (event) => {
-            if (event.data.type === 'chunkGenerated') {
-                const { chunkX, chunkY, chunkZ, meshData } = event.data;
-                const chunkKey = `${chunkX},${chunkY},${chunkZ}`;
+            // Inizializza il worker
+            if (window.Worker) {
+                worker = new Worker('worker.js'); // Nota: usa 'worker.js' come nome
 
-                if (meshData.positions.length > 0) {
-                    const geometry = new THREE.BufferGeometry();
-                    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(meshData.positions), 3));
-                    geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(meshData.normals), 3));
-                    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(meshData.colors), 4));
-                    geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(meshData.indices), 1));
-                    
-                    const material = new THREE.MeshLambertMaterial({
-                        vertexColors: true
-                    });
-                    
-                    const mesh = new THREE.Mesh(geometry, material);
-                    
-                    mesh.position.set(
-                        chunkX * CHUNK_SIZE_LOGIC,
-                        chunkY * CHUNK_SIZE_LOGIC,
-                        chunkZ * CHUNK_SIZE_LOGIC
-                    );
+                // Gestione della comunicazione dal worker al thread principale
+                worker.onmessage = (event) => {
+                    const { type, regionX, regionY, regionZ, chunkX, chunkY, chunkZ, meshData } = event.data;
 
-                    scene.add(mesh);
-                    chunks.set(chunkKey, mesh);
-                } else {
-                    chunks.set(chunkKey, 'empty');
-                }
+                    if (type === 'meshGenerated' && meshData) {
+                        console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
+                        
+                        // Creazione della mesh con i dati ricevuti
+                        const positions = meshData.positions;
+                        const normals = meshData.normals;
+                        const indices = meshData.indices;
+                        
+                        const customMesh = new BABYLON.Mesh(`chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`, scene);
+                        
+                        // Creazione di un oggetto VertexData
+                        const vertexData = new BABYLON.VertexData();
+                        
+                        // Popola l'oggetto VertexData con i dati grezzi
+                        vertexData.positions = positions;
+                        vertexData.normals = normals;
+                        vertexData.indices = indices;
+
+                        // Applica i dati alla mesh
+                        vertexData.applyToMesh(customMesh);
+                        
+                        // Posiziona la mesh correttamente nella scena
+                        const worldX = regionX * (4 * CHUNK_SIZE) + chunkX * CHUNK_SIZE;
+                        const worldY = regionY * (4 * CHUNK_SIZE) + chunkY * CHUNK_SIZE;
+                        const worldZ = regionZ * (4 * CHUNK_SIZE) + chunkZ * CHUNK_SIZE;
+                        customMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                        
+                        // Applica un materiale di base
+                        const material = new BABYLON.StandardMaterial("material", scene);
+                        material.diffuseColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+                        customMesh.material = material;
+                    }
+                };
+
+                worker.onerror = (error) => {
+                    console.error('Thread principale: Errore dal worker.', error);
+                };
+
+                // Avvia il processo di caricamento e meshing
+                loadRegionAndMeshChunk(0, 0, 0, 0, 0, 0); // Esempio: Carica il primo chunk della regione 0,0,0
+
+            } else {
+                console.error("Il tuo browser non supporta i Web Worker.");
             }
+            
+            return scene;
         };
 
-        function updateChunks() {
-            const currentChunkX = Math.floor(camera.position.x / CHUNK_SIZE_LOGIC);
-            const currentChunkY = Math.floor(camera.position.y / CHUNK_SIZE_LOGIC);
-            const currentChunkZ = Math.floor(camera.position.z / CHUNK_SIZE_LOGIC);
+        const scene = createScene();
 
-            if (currentChunkX !== playerChunkX || currentChunkY !== playerChunkY || currentChunkZ !== playerChunkZ) {
-                playerChunkX = currentChunkX;
-                playerChunkY = currentChunkY;
-                playerChunkZ = currentChunkZ;
-                console.log(`Caricamento nuovi chunk attorno a: ${playerChunkX}, ${playerChunkY}, ${playerChunkZ}`);
+        // Funzione per caricare il file binario e inviarlo al worker
+        async function loadRegionAndMeshChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
+            try {
+                const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
+                console.log(`Thread principale: Caricamento del file ${regionPath}...`);
 
-                for (let x = -renderDistance; x <= renderDistance; x++) {
-                    for (let y = -renderDistance; y <= renderDistance; y++) {
-                        for (let z = -renderDistance; z <= renderDistance; z++) {
-                            const chunkX = playerChunkX + x;
-                            const chunkY = playerChunkY + y;
-                            const chunkZ = playerChunkZ + z;
-                            loadChunk(chunkX, chunkY, chunkZ);
-                        }
-                    }
+                const response = await fetch(regionPath);
+                if (!response.ok) {
+                    throw new Error(`Impossibile caricare il file: ${response.statusText}`);
                 }
+                const buffer = await response.arrayBuffer();
+
+                console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+                
+                // Invia l'ArrayBuffer al worker usando i Transferable Objects
+                // Dopo questa riga, 'buffer' non sarà più accessibile in questo thread
+                worker.postMessage({
+                    type: 'generateMeshFromChunk',
+                    regionBuffer: buffer, 
+                    regionX: regionX,
+                    regionY: regionY,
+                    regionZ: regionZ,
+                    chunkX: chunkX,
+                    chunkY: chunkY,
+                    chunkZ: chunkZ
+                }, [buffer]); // Passaggio cruciale: trasferimento del buffer
+                
+            } catch (error) {
+                console.error("Errore durante il caricamento del file:", error);
             }
         }
+        
+        // Loop di rendering
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
 
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-            updateChunks();
-        }
-
-        animate();
+        // Gestione del ridimensionamento della finestra
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
     </script>
 </body>
 </html>
