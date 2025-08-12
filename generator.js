@@ -1,10 +1,13 @@
 // generator.js
 
-const CHUNK_SIZE = 32;
+// Dimensioni logiche del chunk (senza guscio)
+const CHUNK_SIZE_LOGIC = 30;
+const CHUNK_SIZE_WITH_SHELL = 32;
+
 const REGION_CHUNKS = 4;
 const WORLD_HEIGHT = 16; // Altezza del mondo in chunk
 
-// Logica per la generazione del rumore di Perlin integrata
+// Logica per la generazione del rumore di Perlin
 function PerlinNoise(seed) {
     const p = new Uint8Array(512);
     const permutation = new Uint8Array([151,160,137,91,90,15,
@@ -66,7 +69,7 @@ class RegionGenerator {
     }
 
     /**
-     * Ottiene o genera i dati dei voxel per un dato chunk.
+     * Ottiene o genera i dati dei voxel per un dato chunk logico (30x30x30).
      * @param {number} chunkX - Coordinata X del chunk.
      * @param {number} chunkY - Coordinata Y del chunk.
      * @param {number} chunkZ - Coordinata Z del chunk.
@@ -78,21 +81,21 @@ class RegionGenerator {
             return this.chunkCache.get(chunkKey);
         }
 
-        const voxelData = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
+        const voxelData = new Uint8Array(CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC);
         const noiseScale = 0.05;
-        const surfaceHeightOffset = CHUNK_SIZE * WORLD_HEIGHT / 2;
+        const surfaceHeightOffset = CHUNK_SIZE_LOGIC * WORLD_HEIGHT / 2;
 
-        for (let x = 0; x < CHUNK_SIZE; x++) {
-            for (let z = 0; z < CHUNK_SIZE; z++) {
-                const globalX = chunkX * CHUNK_SIZE + x;
-                const globalZ = chunkZ * CHUNK_SIZE + z;
+        for (let x = 0; x < CHUNK_SIZE_LOGIC; x++) {
+            for (let z = 0; z < CHUNK_SIZE_LOGIC; z++) {
+                const globalX = chunkX * CHUNK_SIZE_LOGIC + x;
+                const globalZ = chunkZ * CHUNK_SIZE_LOGIC + z;
                 
-                const noiseValue = (this.noise.noise(globalX * noiseScale, 0, globalZ * noiseScale) + 1) / 2; // Valore tra 0 e 1
+                const noiseValue = (this.noise.noise(globalX * noiseScale, 0, globalZ * noiseScale) + 1) / 2;
                 const surfaceHeight = Math.floor(noiseValue * surfaceHeightOffset) + 5;
 
-                for (let y = 0; y < CHUNK_SIZE; y++) {
-                    const globalY = chunkY * CHUNK_SIZE + y;
-                    const index = x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z;
+                for (let y = 0; y < CHUNK_SIZE_LOGIC; y++) {
+                    const globalY = chunkY * CHUNK_SIZE_LOGIC + y;
+                    const index = x * CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC + y * CHUNK_SIZE_LOGIC + z;
 
                     if (globalY < surfaceHeight) {
                         voxelData[index] = (globalY < surfaceHeight - 4) ? 3 : 1; // 3: Pietra, 1: Terra
@@ -111,64 +114,69 @@ class RegionGenerator {
 
     /**
      * Scrive un chunk in un buffer con il suo guscio.
-     * @param {Buffer} chunkBuffer - Il buffer in cui scrivere il chunk.
+     * Il buffer finale sarà di 32x32x32.
      * @param {number} chunkX - Coordinata X del chunk.
      * @param {number} chunkY - Coordinata Y del chunk.
      * @param {number} chunkZ - Coordinata Z del chunk.
-     * @returns {Buffer} Il buffer del chunk con guscio.
+     * @returns {ArrayBuffer} Il buffer del chunk con guscio.
      */
     writeChunkWithShell(chunkX, chunkY, chunkZ) {
-        const SHELL_CHUNK_SIZE = CHUNK_SIZE + 2;
-        const chunkData = new Uint8Array(SHELL_CHUNK_SIZE * SHELL_CHUNK_SIZE * SHELL_CHUNK_SIZE);
+        const chunkDataWithShell = new Uint8Array(CHUNK_SIZE_WITH_SHELL * CHUNK_SIZE_WITH_SHELL * CHUNK_SIZE_WITH_SHELL);
         
+        // Copia i dati del chunk principale (30x30x30)
         const mainChunkData = this.getChunkData(chunkX, chunkY, chunkZ);
-        for (let x = 0; x < CHUNK_SIZE; x++) {
-            for (let y = 0; y < CHUNK_SIZE; y++) {
-                for (let z = 0; z < CHUNK_SIZE; z++) {
-                    const mainIndex = x * CHUNK_SIZE * CHUNK_SIZE + y * CHUNK_SIZE + z;
-                    const shellIndex = (x + 1) * SHELL_CHUNK_SIZE * SHELL_CHUNK_SIZE + (y + 1) * SHELL_CHUNK_SIZE + (z + 1);
-                    chunkData[shellIndex] = mainChunkData[mainIndex];
+        for (let x = 0; x < CHUNK_SIZE_LOGIC; x++) {
+            for (let y = 0; y < CHUNK_SIZE_LOGIC; y++) {
+                for (let z = 0; z < CHUNK_SIZE_LOGIC; z++) {
+                    const mainIndex = x * CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC + y * CHUNK_SIZE_LOGIC + z;
+                    const shellIndex = (x + 1) * CHUNK_SIZE_WITH_SHELL * CHUNK_SIZE_WITH_SHELL + (y + 1) * CHUNK_SIZE_WITH_SHELL + (z + 1);
+                    chunkDataWithShell[shellIndex] = mainChunkData[mainIndex];
                 }
             }
         }
 
-        for (let x = 0; x < SHELL_CHUNK_SIZE; x++) {
-            for (let y = 0; y < SHELL_CHUNK_SIZE; y++) {
-                for (let z = 0; z < SHELL_CHUNK_SIZE; z++) {
-                    if (x > 0 && x < SHELL_CHUNK_SIZE - 1 &&
-                        y > 0 && y < SHELL_CHUNK_SIZE - 1 &&
-                        z > 0 && z < SHELL_CHUNK_SIZE - 1) {
+        // Popola il guscio con i dati dei chunk adiacenti
+        for (let x = 0; x < CHUNK_SIZE_WITH_SHELL; x++) {
+            for (let y = 0; y < CHUNK_SIZE_WITH_SHELL; y++) {
+                for (let z = 0; z < CHUNK_SIZE_WITH_SHELL; z++) {
+                    // Ignora i voxel interni, che abbiamo già copiato
+                    if (x > 0 && x < CHUNK_SIZE_WITH_SHELL - 1 &&
+                        y > 0 && y < CHUNK_SIZE_WITH_SHELL - 1 &&
+                        z > 0 && z < CHUNK_SIZE_WITH_SHELL - 1) {
                         continue;
                     }
 
-                    const shellIndex = x * SHELL_CHUNK_SIZE * SHELL_CHUNK_SIZE + y * SHELL_CHUNK_SIZE + z;
+                    const shellIndex = x * CHUNK_SIZE_WITH_SHELL * CHUNK_SIZE_WITH_SHELL + y * CHUNK_SIZE_WITH_SHELL + z;
 
-                    const globalX = (chunkX * CHUNK_SIZE) + x - 1;
-                    const globalY = (chunkY * CHUNK_SIZE) + y - 1;
-                    const globalZ = (chunkZ * CHUNK_SIZE) + z - 1;
+                    // Calcola le coordinate globali del voxel sul guscio
+                    const globalX = (chunkX * CHUNK_SIZE_LOGIC) + x - 1;
+                    const globalY = (chunkY * CHUNK_SIZE_LOGIC) + y - 1;
+                    const globalZ = (chunkZ * CHUNK_SIZE_LOGIC) + z - 1;
                     
-                    const isShellVoxel = (x === 0 || x === SHELL_CHUNK_SIZE - 1 ||
-                                            y === 0 || y === SHELL_CHUNK_SIZE - 1 ||
-                                            z === 0 || z === SHELL_CHUNK_SIZE - 1);
+                    const isShellVoxel = (x === 0 || x === CHUNK_SIZE_WITH_SHELL - 1 ||
+                                            y === 0 || y === CHUNK_SIZE_WITH_SHELL - 1 ||
+                                            z === 0 || z === CHUNK_SIZE_WITH_SHELL - 1);
                     
                     if(isShellVoxel){
-                        const neighborChunkX = Math.floor(globalX / CHUNK_SIZE);
-                        const neighborChunkY = Math.floor(globalY / CHUNK_SIZE);
-                        const neighborChunkZ = Math.floor(globalZ / CHUNK_SIZE);
+                        // Determina a quale chunk vicino appartiene il voxel del guscio
+                        const neighborChunkX = Math.floor(globalX / CHUNK_SIZE_LOGIC);
+                        const neighborChunkY = Math.floor(globalY / CHUNK_SIZE_LOGIC);
+                        const neighborChunkZ = Math.floor(globalZ / CHUNK_SIZE_LOGIC);
                         
-                        const neighborVoxelLocalX = (globalX % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
-                        const neighborVoxelLocalY = (globalY % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
-                        const neighborVoxelLocalZ = (globalZ % CHUNK_SIZE + CHUNK_SIZE) % CHUNK_SIZE;
+                        // Calcola le coordinate locali del voxel nel chunk vicino
+                        const neighborVoxelLocalX = (globalX % CHUNK_SIZE_LOGIC + CHUNK_SIZE_LOGIC) % CHUNK_SIZE_LOGIC;
+                        const neighborVoxelLocalY = (globalY % CHUNK_SIZE_LOGIC + CHUNK_SIZE_LOGIC) % CHUNK_SIZE_LOGIC;
+                        const neighborVoxelLocalZ = (globalZ % CHUNK_SIZE_LOGIC + CHUNK_SIZE_LOGIC) % CHUNK_SIZE_LOGIC;
                         
                         const neighborData = this.getChunkData(neighborChunkX, neighborChunkY, neighborChunkZ);
-                        const neighborVoxelIndex = neighborVoxelLocalX * CHUNK_SIZE * CHUNK_SIZE + neighborVoxelLocalY * CHUNK_SIZE + neighborVoxelLocalZ;
-                        chunkData[shellIndex] = neighborData[neighborVoxelIndex];
+                        const neighborVoxelIndex = neighborVoxelLocalX * CHUNK_SIZE_LOGIC * CHUNK_SIZE_LOGIC + neighborVoxelLocalY * CHUNK_SIZE_LOGIC + neighborVoxelLocalZ;
+                        chunkDataWithShell[shellIndex] = neighborData[neighborVoxelIndex];
                     }
                 }
             }
         }
 
-        return chunkData.buffer;
+        return chunkDataWithShell.buffer;
     }
     
     /**
@@ -206,9 +214,9 @@ class RegionGenerator {
         const headerView = new DataView(header);
         new Uint8Array(header).set(new TextEncoder().encode('VOXL'), 0);
         headerView.setUint8(4, 1); // Versione
-        headerView.setUint8(5, CHUNK_SIZE);
-        headerView.setUint8(6, CHUNK_SIZE);
-        headerView.setUint8(7, CHUNK_SIZE);
+        headerView.setUint8(5, CHUNK_SIZE_WITH_SHELL);
+        headerView.setUint8(6, CHUNK_SIZE_WITH_SHELL);
+        headerView.setUint8(7, CHUNK_SIZE_WITH_SHELL);
         headerView.setUint32(8, totalChunks, true);
         
         const indexTableBuffer = new ArrayBuffer(indexTable.length * 4);
