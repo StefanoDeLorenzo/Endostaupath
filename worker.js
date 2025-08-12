@@ -15,7 +15,7 @@ const VOXEL_TYPES = {
 // Scegli l'algoritmo da usare.
 // Valori possibili: 'VOXEL', 'GREEDY'
 // ============================================================================
-const MESHING_ALGORITHM = 'GREEDY';
+const MESHING_ALGORITHM = 'VOXEL';
 
 // Mappa i tipi di voxel a colori in formato RGBA (0-1)
 const VoxelColors = {
