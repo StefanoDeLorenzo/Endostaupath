@@ -123,6 +123,10 @@
                                         // Crea un materiale che usa i colori dei vertici
                                         const material = new BABYLON.StandardMaterial("material", scene);
                                         material.useVertexColors = true;
+
+                                        material.hasAlpha = true;
+                                        material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+
                                         customMesh.material = material;
 
                                     } else {
