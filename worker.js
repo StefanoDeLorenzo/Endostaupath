@@ -52,135 +52,72 @@ function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
 // Questa funzione è identica a quella che abbiamo visto prima, ma ora è qui.
 // ============================================================================
 function generateMeshForChunk(chunkData, chunkWorldX, chunkWorldY, chunkWorldZ) {
-    if (chunkData.length === 0) {
-        return { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint16Array() };
-    }
+        const positions = [];
+        const normals = [];
+        const indices = [];
+        let indexOffset = 0;
 
-    const positions = [];
-    const normals = [];
-    const indices = [];
+        // Dati di un cubo con 6 facce separate
+        const cubeFaceData = [
+            // +X face
+            { positions: [1,1,1, 1,1,-1, 1,-1,-1, 1,-1,1], normals: [1,0,0, 1,0,0, 1,0,0, 1,0,0], indices: [0,1,2, 0,2,3] },
+            // -X face
+            { positions: [-1,1,-1, -1,1,1, -1,-1,1, -1,-1,-1], normals: [-1,0,0, -1,0,0, -1,0,0, -1,0,0], indices: [0,1,2, 0,2,3] },
+            // +Y face
+            { positions: [-1,1,-1, 1,1,-1, 1,1,1, -1,1,1], normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0], indices: [0,1,2, 0,2,3] },
+            // -Y face
+            { positions: [-1,-1,1, 1,-1,1, 1,-1,-1, -1,-1,-1], normals: [0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0], indices: [0,1,2, 0,2,3] },
+            // +Z face
+            { positions: [-1,1,1, 1,1,1, 1,-1,1, -1,-1,1], normals: [0,0,1, 0,0,1, 0,0,1, 0,0,1], indices: [0,1,2, 0,2,3] },
+            // -Z face
+            { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], indices: [0,1,2, 0,2,3] }
+        ];
 
-    const cubePositions = [
-        1, 1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1,
-        -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1,
-        -1, 1, -1, 1, 1, -1, 1, 1, 1, -1, 1, 1,
-        -1, -1, 1, 1, -1, 1, 1, -1, -1, -1, -1, -1,
-        -1, 1, 1, 1, 1, 1, 1, -1, 1, -1, -1, 1,
-        1, 1, -1, -1, 1, -1, -1, -1, -1, 1, -1, -1,
-    ];
-    const cubeNormals = [
-        1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
-        -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
-        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
-        0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
-        0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
-        0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
-    ];
-    const cubeIndices = [
-        0, 1, 2, 0, 2, 3,
-        4, 5, 6, 4, 6, 7,
-        8, 9, 10, 8, 10, 11,
-        12, 13, 14, 12, 14, 15,
-        16, 17, 18, 16, 18, 19,
-        20, 21, 22, 20, 22, 23,
-    ];
-    
-    let indexOffset = 0;
-    
-    for (let x = 1; x < CHUNK_SIZE_SHELL - 1; x++) {
-        for (let y = 1; y < CHUNK_SIZE_SHELL - 1; y++) {
-            for (let z = 1; z < CHUNK_SIZE_SHELL - 1; z++) {
-                const voxel = chunkData[x + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * z)];
-                if (voxel !== VOXEL_TYPES.Air && voxel !== VOXEL_TYPES.Cloud) {
-                    
-                    const neighbors = [
-                        chunkData[(x + 1) + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * z)],
-                        chunkData[(x - 1) + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * z)],
-                        chunkData[x + CHUNK_SIZE_SHELL * ((y + 1) + CHUNK_SIZE_SHELL * z)],
-                        chunkData[x + CHUNK_SIZE_SHELL * ((y - 1) + CHUNK_SIZE_SHELL * z)],
-                        chunkData[x + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * (z + 1))],
-                        chunkData[x + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * (z - 1))],
-                    ];
-                    
-                    const neighborIsAir = (v) => v === VOXEL_TYPES.Air || v === VOXEL_TYPES.Cloud;
-
-                    if (neighborIsAir(neighbors[0])) { // +X
-                        for (let i = 0; i < 4; i++) {
-                            positions.push(chunkWorldX + (x - 1) + cubePositions[0*12 + i*3] * 0.5);
-                            positions.push(chunkWorldY + (y - 1) + cubePositions[0*12 + i*3 + 1] * 0.5);
-                            positions.push(chunkWorldZ + (z - 1) + cubePositions[0*12 + i*3 + 2] * 0.5);
-                            normals.push(cubeNormals[0*12 + i*3], cubeNormals[0*12 + i*3 + 1], cubeNormals[0*12 + i*3 + 2]);
-                        }
-                        indices.push(indexOffset + cubeIndices[0], indexOffset + cubeIndices[1], indexOffset + cubeIndices[2]);
-                        indices.push(indexOffset + cubeIndices[3], indexOffset + cubeIndices[4], indexOffset + cubeIndices[5]);
-                        indexOffset += 4;
-                    }
-                    if (neighborIsAir(neighbors[1])) { // -X
-                        for (let i = 0; i < 4; i++) {
-                            positions.push(chunkWorldX + (x - 1) + cubePositions[1*12 + i*3] * 0.5);
-                            positions.push(chunkWorldY + (y - 1) + cubePositions[1*12 + i*3 + 1] * 0.5);
-                            positions.push(chunkWorldZ + (z - 1) + cubePositions[1*12 + i*3 + 2] * 0.5);
-                            normals.push(cubeNormals[1*12 + i*3], cubeNormals[1*12 + i*3 + 1], cubeNormals[1*12 + i*3 + 2]);
-                        }
-                        indices.push(indexOffset + cubeIndices[6], indexOffset + cubeIndices[7], indexOffset + cubeIndices[8]);
-                        indices.push(indexOffset + cubeIndices[9], indexOffset + cubeIndices[10], indexOffset + cubeIndices[11]);
-                        indexOffset += 4;
-                    }
-                    if (neighborIsAir(neighbors[2])) { // +Y
-                        for (let i = 0; i < 4; i++) {
-                            positions.push(chunkWorldX + (x - 1) + cubePositions[2*12 + i*3] * 0.5);
-                            positions.push(chunkWorldY + (y - 1) + cubePositions[2*12 + i*3 + 1] * 0.5);
-                            positions.push(chunkWorldZ + (z - 1) + cubePositions[2*12 + i*3 + 2] * 0.5);
-                            normals.push(cubeNormals[2*12 + i*3], cubeNormals[2*12 + i*3 + 1], cubeNormals[2*12 + i*3 + 2]);
-                        }
-                        indices.push(indexOffset + cubeIndices[12], indexOffset + cubeIndices[13], indexOffset + cubeIndices[14]);
-                        indices.push(indexOffset + cubeIndices[15], indexOffset + cubeIndices[16], indexOffset + cubeIndices[17]);
-                        indexOffset += 4;
-                    }
-                    if (neighborIsAir(neighbors[3])) { // -Y
-                        for (let i = 0; i < 4; i++) {
-                            positions.push(chunkWorldX + (x - 1) + cubePositions[3*12 + i*3] * 0.5);
-                            positions.push(chunkWorldY + (y - 1) + cubePositions[3*12 + i*3 + 1] * 0.5);
-                            positions.push(chunkWorldZ + (z - 1) + cubePositions[3*12 + i*3 + 2] * 0.5);
-                            normals.push(cubeNormals[3*12 + i*3], cubeNormals[3*12 + i*3 + 1], cubeNormals[3*12 + i*3 + 2]);
-                        }
-                        indices.push(indexOffset + cubeIndices[18], indexOffset + cubeIndices[19], indexOffset + cubeIndices[20]);
-                        indices.push(indexOffset + cubeIndices[21], indexOffset + cubeIndices[22], indexOffset + cubeIndices[23]);
-                        indexOffset += 4;
-                    }
-                    if (neighborIsAir(neighbors[4])) { // +Z
-                        for (let i = 0; i < 4; i++) {
-                            positions.push(chunkWorldX + (x - 1) + cubePositions[4*12 + i*3] * 0.5);
-                            positions.push(chunkWorldY + (y - 1) + cubePositions[4*12 + i*3 + 1] * 0.5);
-                            positions.push(chunkWorldZ + (z - 1) + cubePositions[4*12 + i*3 + 2] * 0.5);
-                            normals.push(cubeNormals[4*12 + i*3], cubeNormals[4*12 + i*3 + 1], cubeNormals[4*12 + i*3 + 2]);
-                        }
-                        indices.push(indexOffset + cubeIndices[24], indexOffset + cubeIndices[25], indexOffset + cubeIndices[26]);
-                        indices.push(indexOffset + cubeIndices[27], indexOffset + cubeIndices[28], indexOffset + cubeIndices[29]);
-                        indexOffset += 4;
-                    }
-                    if (neighborIsAir(neighbors[5])) { // -Z
-                        for (let i = 0; i < 4; i++) {
-                            positions.push(chunkWorldX + (x - 1) + cubePositions[5*12 + i*3] * 0.5);
-                            positions.push(chunkWorldY + (y - 1) + cubePositions[5*12 + i*3 + 1] * 0.5);
-                            positions.push(chunkWorldZ + (z - 1) + cubePositions[5*12 + i*3 + 2] * 0.5);
-                            normals.push(cubeNormals[5*12 + i*3], cubeNormals[5*12 + i*3 + 1], cubeNormals[5*12 + i*3 + 2]);
-                        }
-                        indices.push(indexOffset + cubeIndices[30], indexOffset + cubeIndices[31], indexOffset + cubeIndices[32]);
-                        indices.push(indexOffset + cubeIndices[33], indexOffset + cubeIndices[34], indexOffset + cubeIndices[35]);
-                        indexOffset += 4;
+        for (let x = 1; x < CHUNK_SIZE_SHELL - 1; x++) {
+            for (let y = 1; y < CHUNK_SIZE_SHELL - 1; y++) {
+                for (let z = 1; z < CHUNK_SIZE_SHELL - 1; z++) {
+                    const voxel = chunkData[x + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * z)];
+                    if (voxel !== VOXEL_TYPES.Air && voxel !== VOXEL_TYPES.Cloud) {
+                        
+                        const neighborOffsets = [
+                            [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+                        ];
+                        
+                        neighborOffsets.forEach((offset, faceIndex) => {
+                            const [ox, oy, oz] = offset;
+                            const neighborVoxel = chunkData[(x + ox) + CHUNK_SIZE_SHELL * ((y + oy) + CHUNK_SIZE_SHELL * (z + oz))];
+                            
+                            const neighborIsAir = (v) => v === VOXEL_TYPES.Air || v === VOXEL_TYPES.Cloud;
+                            
+                            if (neighborIsAir(neighborVoxel)) {
+                                const faceData = cubeFaceData[faceIndex];
+                                
+                                // Aggiungi vertici e normali
+                                for (let i = 0; i < faceData.positions.length; i += 3) {
+                                    positions.push(chunkWorldX + (x - 1) + faceData.positions[i] * 0.5);
+                                    positions.push(chunkWorldY + (y - 1) + faceData.positions[i + 1] * 0.5);
+                                    positions.push(chunkWorldZ + (z - 1) + faceData.positions[i + 2] * 0.5);
+                                    normals.push(faceData.normals[i], faceData.normals[i + 1], faceData.normals[i + 2]);
+                                }
+                                
+                                // Aggiungi indici e aggiorna l'offset
+                                for (let i = 0; i < faceData.indices.length; i++) {
+                                    indices.push(indexOffset + faceData.indices[i]);
+                                }
+                                indexOffset += 4;
+                            }
+                        });
                     }
                 }
             }
         }
+        
+        return {
+            positions: new Float32Array(positions),
+            normals: new Float32Array(normals),
+            indices: new Uint16Array(indices)
+        };
     }
-
-    return {
-        positions: new Float32Array(positions),
-        normals: new Float32Array(normals),
-        indices: new Uint16Array(indices)
-    };
-}
 
 
 // ============================================================================
