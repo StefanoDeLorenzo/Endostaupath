@@ -227,36 +227,20 @@ class RegionGenerator {
 
         return combinedBuffer.buffer;
     }
-
-    /**
-     * Genera un mondo di N regioni in un volume 3D.
-     * @param {number} numRegions - Numero di regioni da generare su X e Z.
-     * @param {number} worldHeight - Altezza del mondo in chunk di regioni.
-     */
-    generateWorld(numRegions = 2, worldHeight = 1) {
-        // ... (omesso codice per chiarezza)
-    }
 }
 
 
 self.onmessage = (event) => {
-    const { type, numRegions, worldHeight } = event.data;
-    if (type === 'generateWorld') {
+    const { type, regionX, regionY, regionZ } = event.data;
+    if (type === 'generateRegion') {
         const generator = new RegionGenerator();
-        const promises = [];
-        
-        for (let x = -numRegions; x <= numRegions; x++) {
-            for (let y = -Math.floor(worldHeight/2); y <= Math.floor(worldHeight/2); y++) { // 💡 Modificato per supportare coordinate Y negative
-                for (let z = -numRegions; z <= numRegions; z++) {
-                    const regionBuffer = generator.writeRegion(x, y, z);
-                    promises.push({x, y, z, buffer: regionBuffer});
-                }
-            }
-        }
-        
+        const regionBuffer = generator.writeRegion(regionX, regionY, regionZ);
         self.postMessage({
-            type: 'worldGenerated',
-            regions: promises
-        });
+            type: 'regionGenerated',
+            regionX,
+            regionY,
+            regionZ,
+            buffer: regionBuffer
+        }, [regionBuffer]);
     }
 };
