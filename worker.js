@@ -13,7 +13,7 @@ const VOXEL_TYPES = {
 // ============================================================================
 // # CONFIGURAZIONE ALGORITMO DI MESHING
 // ============================================================================
-const MESHING_ALGORITHM = 'VOXEL'; // O 'GREEDY'
+const MESHING_ALGORITHM = 'GREEDY'; // 'VOXEL' O 'GREEDY'
 
 const VoxelColors = {
     [VOXEL_TYPES.Dirt]: [0.55, 0.45, 0.25, 1.0], // Marrone
