@@ -29,25 +29,17 @@
         
         const createScene = function () {
             const scene = new BABYLON.Scene(engine);
-            
+            scene.ambientColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+
             const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
             camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
             camera.attachControl(canvas, true);
-
-            // Aggiungiamo un'Environment Texture per una corretta illuminazione PBR
-            const hdrTexture = new BABYLON.HDRCubeTexture(
-                "https://www.babylonjs-playground.com/textures/environment.env",
-                scene,
-                512
-            );
-            scene.environmentTexture = hdrTexture;
-            scene.environmentIntensity = 1.0; // Intensità dell'ambiente
-
-            // Usiamo una luce direzionale che simula il sole
-            const light = new BABYLON.DirectionalLight("dir01", new BABYLON.Vector3(-1, -2, 1), scene);
-            light.position = new BABYLON.Vector3(60, 60, -60);
-            light.intensity = 2; // Aumento l'intensità per renderla ben visibile
             
+            // Reintroduciamo la HemisphericLight
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.7;
+            light.specular = new BABYLON.Color3(0.5, 0.5, 0.5);
+
             if (window.Worker) {
                 loadRegionAndMeshAllChunks(0, 0, 0);
             } else {
