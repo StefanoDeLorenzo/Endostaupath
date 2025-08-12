@@ -29,7 +29,6 @@ const VoxelColors = {
     [VOXEL_TYPES.Air]: [0.0, 0.0, 0.0, 0.0] // Trasparente
 };
 
-// Mappa i tipi di voxel in base alla loro opacità
 const VoxelOpacity = {
     [VOXEL_TYPES.Air]: 'transparent',
     [VOXEL_TYPES.Cloud]: 'transparent',
@@ -42,12 +41,12 @@ const VoxelOpacity = {
 };
 
 const cubeFaceData = [
-    { positions: [1,1,1, 1,1,-1, 1,-1,-1, 1,-1,1], normals: [1,0,0, 1,0,0, 1,0,0, 1,0,0], indices: [0,1,2, 0,2,3] },
-    { positions: [-1,1,-1, -1,1,1, -1,-1,1, -1,-1,-1], normals: [-1,0,0, -1,0,0, -1,0,0, -1,0,0], indices: [0,1,2, 0,2,3] },
-    { positions: [-1,1,-1, 1,1,-1, 1,1,1, -1,1,1], normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0], indices: [0,1,2, 0,2,3] },
-    { positions: [-1,-1,1, 1,-1,1, 1,-1,-1, -1,-1,-1], normals: [0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0], indices: [0,1,2, 0,2,3] },
-    { positions: [-1,1,1, 1,1,1, 1,-1,1, -1,-1,1], normals: [0,0,1, 0,0,1, 0,0,1, 0,0,1], indices: [0,1,2, 0,2,3] },
-    { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], indices: [0,1,2, 0,2,3] }
+    { positions: [1,1,1, 1,1,-1, 1,-1,-1, 1,-1,1], normals: [1,0,0, 1,0,0, 1,0,0, 1,0,0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,-1, -1,1,1, -1,-1,1, -1,-1,-1], normals: [-1,0,0, -1,0,0, -1,0,0, -1,0,0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,-1, 1,1,-1, 1,1,1, -1,1,1], normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,-1,1, 1,-1,1, 1,-1,-1, -1,-1,-1], normals: [0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,1, 1,1,1, 1,-1,1, -1,-1,1], normals: [0,0,1, 0,0,1, 0,0,1, 0,0,1], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], indices: [0,1,2, 0,2,3], isBackFace: false }
 ];
 
 // # Funzione di Meshing Voxel per Voxel (CORRETTA)
@@ -98,14 +97,39 @@ function generateMeshForChunk_Voxel(chunkData) {
                             currentMeshData.positions.push((x - 1) + faceData.positions[i] * 0.5);
                             currentMeshData.positions.push((y - 1) + faceData.positions[i + 1] * 0.5);
                             currentMeshData.positions.push((z - 1) + faceData.positions[i + 2] * 0.5);
-                            currentMeshData.normals.push(faceData.normals[i], faceData.normals[i + 1], faceData.normals[i + 2]);
-                            currentMeshData.colors.push(...voxelColor);
                         }
                         
-                        for (let i = 0; i < faceData.indices.length; i++) {
-                            currentMeshData.indices.push(currentMeshData.indexOffset + faceData.indices[i]);
+                        // Assicurati che le normali siano rivolte verso l'esterno
+                        if (faceData.isBackFace) {
+                            for (let i = 0; i < faceData.normals.length; i += 3) {
+                                currentMeshData.normals.push(-faceData.normals[i], -faceData.normals[i + 1], -faceData.normals[i + 2]);
+                            }
+                        } else {
+                            currentMeshData.normals.push(...faceData.normals);
                         }
+
+                        // Inverti gli indici se necessario per la normale
+                        if (faceData.isBackFace) {
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 1);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 3);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                        } else {
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 1);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 3);
+                        }
+
                         currentMeshData.indexOffset += 4;
+                        
+                        for (let i = 0; i < 4; i++) {
+                             currentMeshData.colors.push(...voxelColor);
+                        }
                     }
                 });
             }
@@ -124,8 +148,6 @@ function generateMeshForChunk_Voxel(chunkData) {
 
     return finalMeshData;
 }
-
-// TODO: La logica di Greedy Meshing va adattata per gestire i diversi materiali nello stesso modo.
 
 self.onmessage = async (event) => {
     const { type, chunkData, chunkX, chunkY, chunkZ } = event.data;
