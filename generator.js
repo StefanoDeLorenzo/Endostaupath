@@ -1,47 +1,95 @@
-// Il Worker
-// Includi l'implementazione del perlinNoise3D e la definizione della classe
-// (per brevità, assumiamo che siano già in questo file).
+// Implementazione di un semplice rumore Perlin 3D.
+// Basato su una versione del Perlin di Ken Perlin del 2002.
+function perlinNoise3D(x, y, z) {
+    const p = new Uint8Array(512);
+    const permutation = [151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 175, 87, 86, 232, 199, 158, 58, 77, 24, 226, 207, 170, 182, 179, 5, 236, 123, 110, 150, 134, 100, 16, 93, 249, 112, 192, 169, 211, 218, 128, 76, 139, 115, 127, 245, 196, 49, 176, 185, 19, 147, 238, 156, 46, 143, 205, 107, 253, 178, 13, 242, 198, 11, 101, 145, 14, 18, 184, 194, 204, 173, 212, 152, 17, 18, 239, 210, 129, 172, 197, 45, 78, 16, 188, 104, 19, 181, 244, 209, 184, 96, 22, 216, 73, 126, 10, 215, 200, 162, 105, 114, 246, 209, 138, 12, 47, 118, 24, 165, 208, 22, 98, 166, 15, 102, 235, 221, 16, 233, 11, 198, 48, 149, 102, 60, 250, 173, 228, 14, 212, 213, 221, 203, 167, 235, 195, 219, 171, 15, 168, 158, 204, 135, 16, 70, 113, 187, 164, 119, 180, 251, 80, 14, 60, 159, 177, 224, 225, 230, 239, 216, 24, 111, 218, 202, 90, 89, 74, 169, 186, 206, 61, 91, 15, 217, 132, 21, 10, 12, 159, 168, 79, 167, 12, 143, 205, 193, 214, 112, 43, 25, 243, 85, 246, 163, 145, 154, 97, 113, 144, 171, 122, 191, 162, 248, 201, 220, 4, 189, 222, 247, 65, 133, 254, 195, 20, 231, 183, 174, 15, 20, 231, 183, 174, 15, 60, 159, 177, 224, 225, 230, 239, 216, 24, 111, 218, 202, 90, 89, 74, 169, 186, 206, 61, 91, 15, 217, 132, 21, 10, 12, 159, 168, 79, 167, 12, 143, 205, 193, 214, 112, 43, 25, 243, 85, 246, 163, 145, 154, 97, 113, 144, 171, 122, 191, 162, 248, 201, 220, 4, 189, 222, 247, 65, 133, 254, 195, 20, 231, 183, 174, 15, 20, 231, 183, 174, 15];
+    for (let i = 0; i < 256; i++) {
+        p[i] = p[i + 256] = permutation[i];
+    }
+    
+    function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    function lerp(t, a, b) { return a + t * (b - a); }
+    function grad(hash, x, y, z) {
+        let h = hash & 15;
+        let u = h < 8 ? x : y;
+        let v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    }
+    
+    let X = Math.floor(x) & 255;
+    let Y = Math.floor(y) & 255;
+    let Z = Math.floor(z) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    z -= Math.floor(z);
+    let u = fade(x);
+    let v = fade(y);
+    let w = fade(z);
+    let A = p[X] + Y;
+    let B = p[X + 1] + Y;
+    let A0 = p[A] + Z;
+    let A1 = p[A + 1] + Z;
+    let B0 = p[B] + Z;
+    let B1 = p[B + 1] + Z;
+    return lerp(w, lerp(v, lerp(u, grad(p[A0], x, y, z), grad(p[B0], x - 1, y, z)),
+            lerp(u, grad(p[A1], x, y - 1, z), grad(p[B1], x - 1, y - 1, z))),
+        lerp(v, lerp(u, grad(p[A0 + 1], x, y, z - 1), grad(p[B0 + 1], x - 1, y, z - 1)),
+            lerp(u, grad(p[A1 + 1], x, y - 1, z - 1), grad(p[B1 + 1], x - 1, y - 1, z - 1))));
+}
 
-const generator = new WorldGenerator();
 
+const SKY_LEVEL = 50; 
+const GROUND_LEVEL = 10;
+const VoxelTypes = {
+    Air: 0,
+    Dirt: 1,
+    Cloud: 2,
+    Grass: 3,
+    Rock: 4
+};
+
+
+class VoxelChunk {
+    constructor(logicalChunkData) {
+        this.logicalChunkData = logicalChunkData; 
+    }
+
+    getVoxel(x, y, z) {
+        if (x >= 0 && x < 30 && y >= 0 && y < 30 && z >= 0 && z < 30) {
+            return this.logicalChunkData[x + 30 * (y + 30 * z)];
+        }
+        return VoxelTypes.Air;
+    }
+}
 
 class WorldGenerator {
     constructor() {
-        this.worldCache = new Map(); // Usiamo una Map per la cache
+        this.worldCache = new Map();
     }
 
-    // Genera e memorizza un singolo chunk logico (30x30x30)
     generateLogicalChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-        // Questa è la tua logica di generazione del terreno stratificato
-        // che abbiamo definito in precedenza.
         const chunkData = new Uint8Array(30 * 30 * 30);
-        // ... (qui va la logica del Perlin Noise per riempire chunkData) ...
-        // Calcola le coordinate globali
-        const globalRegionX = regionX * 120; // 4 chunks * 30
-        const globalRegionY = regionY * 120;
-        const globalRegionZ = regionZ * 120;
-
-        const globalChunkX = chunkX * 30;
-        const globalChunkY = chunkY * 30;
-        const globalChunkZ = chunkZ * 30;
-
+        const scale = 0.05; 
+    
         for (let x = 0; x < 30; x++) {
             for (let y = 0; y < 30; y++) {
                 for (let z = 0; z < 30; z++) {
-                    const globalX = globalRegionX + globalChunkX + x;
-                    const globalY = globalRegionY + globalChunkY + y;
-                    const globalZ = globalRegionZ + globalChunkZ + z;
-                    
+                    const globalX = regionX * (4 * 30) + chunkX * 30 + x;
+                    const globalY = regionY * (4 * 30) + chunkY * 30 + y;
+                    const globalZ = regionZ * (4 * 30) + chunkZ * 30 + z;
+
                     let voxelType = VoxelTypes.Air; 
                     
-                    if (globalY > 50) {
+                    if (globalY > SKY_LEVEL) {
                         const cloudNoise = perlinNoise3D(globalX * 0.02, globalY * 0.02, globalZ * 0.02);
                         if (cloudNoise > 0.4) {
-                            voxelType = VoxelTypes.Cloud;
+                            voxelType = VoxelTypes.Cloud; 
+                        } else {
+                            voxelType = VoxelTypes.Air;
                         }
                     } else {
-                        const surfaceNoise = perlinNoise3D(globalX * 0.05, 0, globalZ * 0.05);
-                        const surfaceHeight = 10 + Math.floor(Math.abs(surfaceNoise) * 20);
+                        const surfaceNoise = perlinNoise3D(globalX * scale, 0, globalZ * scale);
+                        const surfaceHeight = GROUND_LEVEL + Math.floor(Math.abs(surfaceNoise) * 20);
                         
                         if (globalY < surfaceHeight) {
                             if (globalY === surfaceHeight - 1) {
@@ -51,7 +99,7 @@ class WorldGenerator {
                             }
                         }
 
-                        if (globalY < 10) {
+                        if (globalY < GROUND_LEVEL) {
                             const caveNoise = perlinNoise3D(globalX * 0.1, globalY * 0.1, globalZ * 0.1);
                             if (caveNoise > 0.3) {
                                 voxelType = VoxelTypes.Rock;
@@ -60,15 +108,15 @@ class WorldGenerator {
                             }
                         }
                     }
-                    chunkData[x + 30 * (y + 30 * z)] = voxelType;
+                    
+                    const index = x + 30 * (y + 30 * z);
+                    chunkData[index] = voxelType;
                 }
             }
         }
-        
         return new VoxelChunk(chunkData);
     }
     
-    // Ottiene un chunk dalla cache o lo genera se non esiste
     getOrCreateChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
         const key = `${regionX}-${regionY}-${regionZ}-${chunkX}-${chunkY}-${chunkZ}`;
         if (this.worldCache.has(key)) {
@@ -79,7 +127,6 @@ class WorldGenerator {
         return chunk;
     }
     
-    // Funzione che crea un chunk con il guscio
     createChunkWithShell(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
         const chunkWithShell = new Uint8Array(32 * 32 * 32);
 
@@ -96,34 +143,71 @@ class WorldGenerator {
                         const chunk = this.getOrCreateChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
                         voxelData = chunk.getVoxel(innerX, innerY, innerZ);
                     } else {
-                        // Trova le coordinate del chunk adiacente
                         let neighborRegionX = regionX, neighborRegionY = regionY, neighborRegionZ = regionZ;
                         let neighborChunkX = chunkX, neighborChunkY = chunkY, neighborChunkZ = chunkZ;
                         let neighborInnerX = innerX, neighborInnerY = innerY, neighborInnerZ = innerZ;
 
-                        if (innerX < 0) { neighborChunkX--; neighborInnerX = 29; } else if (innerX >= 30) { neighborChunkX++; neighborInnerX = 0; }
-                        if (neighborChunkX < 0) { neighborRegionX--; neighborChunkX = 3; } else if (neighborChunkX >= 4) { neighborRegionX++; neighborChunkX = 0; }
-                        
-                        if (innerY < 0) { neighborChunkY--; neighborInnerY = 29; } else if (innerY >= 30) { neighborChunkY++; neighborInnerY = 0; }
-                        if (neighborChunkY < 0) { neighborRegionY--; neighborChunkY = 3; } else if (neighborChunkY >= 4) { neighborRegionY++; neighborChunkY = 0; }
-                        
-                        if (innerZ < 0) { neighborChunkZ--; neighborInnerZ = 29; } else if (innerZ >= 30) { neighborChunkZ++; neighborInnerZ = 0; }
-                        if (neighborChunkZ < 0) { neighborRegionZ--; neighborChunkZ = 3; } else if (neighborChunkZ >= 4) { neighborRegionZ++; neighborChunkZ = 0; }
-                        
+                        if (innerX < 0) {
+                            neighborChunkX--;
+                            neighborInnerX = 29;
+                        } else if (innerX >= 30) {
+                            neighborChunkX++;
+                            neighborInnerX = 0;
+                        }
+
+                        if (neighborY < 0) {
+                            neighborChunkY--;
+                            neighborInnerY = 29;
+                        } else if (innerY >= 30) {
+                            neighborChunkY++;
+                            neighborInnerY = 0;
+                        }
+
+                        if (innerZ < 0) {
+                            neighborChunkZ--;
+                            neighborInnerZ = 29;
+                        } else if (innerZ >= 30) {
+                            neighborChunkZ++;
+                            neighborInnerZ = 0;
+                        }
+
+                        if (neighborChunkX < 0) {
+                            neighborRegionX--;
+                            neighborChunkX = 3;
+                        } else if (neighborChunkX >= 4) {
+                            neighborRegionX++;
+                            neighborChunkX = 0;
+                        }
+
+                        if (neighborChunkY < 0) {
+                            neighborRegionY--;
+                            neighborChunkY = 3;
+                        } else if (neighborChunkY >= 4) {
+                            neighborRegionY++;
+                            neighborChunkY = 0;
+                        }
+
+                        if (neighborChunkZ < 0) {
+                            neighborRegionZ--;
+                            neighborChunkZ = 3;
+                        } else if (neighborChunkZ >= 4) {
+                            neighborRegionZ++;
+                            neighborChunkZ = 0;
+                        }
+
                         const neighborChunk = this.getOrCreateChunk(neighborRegionX, neighborRegionY, neighborRegionZ, neighborChunkX, neighborChunkY, neighborChunkZ);
                         voxelData = neighborChunk.getVoxel(neighborInnerX, neighborInnerY, neighborInnerZ);
                     }
                     
-                    chunkWithShell[x + 32 * (y + 32 * z)] = voxelData;
+                    const index = x + 32 * (y + 32 * z);
+                    chunkWithShell[index] = voxelData;
                 }
             }
         }
         return chunkWithShell;
     }
 
-    // Scrive l'intero file della regione
     writeRegionFile(regionX, regionY, regionZ) {
-        // ... (stessa logica di scrittura del file binario, ma che ora usa i metodi della classe)
         const chunksWithShell = [];
         for (let chunkX = 0; chunkX < 4; chunkX++) {
             for (let chunkY = 0; chunkY < 4; chunkY++) {
@@ -133,7 +217,6 @@ class WorldGenerator {
             }
         }
         
-        // ... Logica di calcolo di header, index table, ecc.
         const totalChunks = 64;
         const chunkSizeInBytes = 32768; 
         const headerSize = 11;
@@ -172,20 +255,7 @@ class WorldGenerator {
     }
 }
 
-class VoxelChunk {
-    constructor(logicalChunkData) {
-        // I dati del chunk interno (30x30x30)
-        this.logicalChunkData = logicalChunkData; 
-    }
-
-    // Metodo per ottenere un singolo voxel dal chunk logico
-    getVoxel(x, y, z) {
-        if (x >= 0 && x < 30 && y >= 0 && y < 30 && z >= 0 && z < 30) {
-            return this.logicalChunkData[x + 30 * (y + 30 * z)];
-        }
-        return VoxelTypes.Air;
-    }
-}
+const generator = new WorldGenerator();
 
 self.onmessage = async (event) => {
     const { type, regionX, regionY, regionZ } = event.data;
@@ -195,7 +265,6 @@ self.onmessage = async (event) => {
         const fromY = regionY - 1, toY = regionY + 1;
         const fromZ = regionZ - 1, toZ = regionZ + 1;
         
-        // Popola la cache per la regione corrente e i suoi vicini
         for (let x = fromX; x <= toX; x++) {
             for (let y = fromY; y <= toY; y++) {
                 for (let z = fromZ; z <= toZ; z++) {
