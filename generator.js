@@ -1,4 +1,4 @@
-// generator.js
+// generator.js - Generatore di mondi procedurali per voxel
 
 // Dimensioni logiche del chunk (senza guscio)
 const CHUNK_SIZE_LOGIC = 30;
