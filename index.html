@@ -31,7 +31,7 @@
             const scene = new BABYLON.Scene(engine);
             
             const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
-            camera.setTarget(BABYLON.Vector3.Zero());
+            camera.setTarget(new BABYLON.Vector3(60, 0, 60)); // Cambiato il target per centrare la regione
             camera.attachControl(canvas, true);
             
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
@@ -48,19 +48,17 @@
 
         const scene = createScene();
         
-        // FUNZIONE DI LETTURA CORRETTA
         function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
             const dataView = new DataView(buffer);
             
             const headerSize = 11;
             const chunkIndex = chunkX + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkZ);
             
-            // L'offset è memorizzato su 3 byte, non su 4 come un Uint32
             const offsetIndex = headerSize + chunkIndex * 5;
             const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
 
             if (chunkFileOffset === 0) {
-                return null; // Restituisci null per i chunk vuoti
+                return null;
             }
             
             const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
@@ -108,16 +106,22 @@
                                         vertexData.positions = meshData.positions;
                                         vertexData.normals = meshData.normals;
                                         vertexData.indices = meshData.indices;
+                                        vertexData.colors = meshData.colors; // <- Aggiunto il Vertex Colors!
                                         vertexData.applyToMesh(customMesh);
                                         
-                                        const worldX = regionX * (REGION_DIMENSION * CHUNK_SIZE) + chunkX * CHUNK_SIZE;
-                                        const worldY = regionY * (REGION_DIMENSION * CHUNK_SIZE) + chunkY * CHUNK_SIZE;
-                                        const worldZ = regionZ * (REGION_DIMENSION * CHUNK_SIZE) + chunkZ * CHUNK_SIZE;
+                                        // CORREZIONE POSIZIONAMENTO CHUNK:
+                                        // La posizione finale è la dimensione del chunk moltiplicata per il suo indice
+                                        const worldX = chunkX * CHUNK_SIZE;
+                                        const worldY = chunkY * CHUNK_SIZE;
+                                        const worldZ = chunkZ * CHUNK_SIZE;
                                         customMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                         
+                                        // CORREZIONE MATERIALE:
+                                        // Crea un materiale che usa i colori dei vertici
                                         const material = new BABYLON.StandardMaterial("material", scene);
-                                        material.diffuseColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+                                        material.useVertexColors = true;
                                         customMesh.material = material;
+
                                     } else {
                                         console.log(`Thread principale: Il chunk (${chunkX}, ${chunkY}, ${chunkZ}) ha una mesh vuota. Probabilmente aria.`);
                                     }

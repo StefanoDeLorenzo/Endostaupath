@@ -11,19 +11,28 @@ const VOXEL_TYPES = {
     Rock: 4
 };
 
+// Mappa i tipi di voxel a colori in formato RGBA (0-1)
+const VoxelColors = {
+    [VOXEL_TYPES.Dirt]: [0.55, 0.45, 0.25, 1.0], // Marrone
+    [VOXEL_TYPES.Grass]: [0.2, 0.6, 0.2, 1.0], // Verde
+    [VOXEL_TYPES.Rock]: [0.4, 0.4, 0.4, 1.0], // Grigio
+    [VOXEL_TYPES.Cloud]: [1.0, 1.0, 1.0, 0.8], // Bianco traslucido
+    [VOXEL_TYPES.Air]: [0.0, 0.0, 0.0, 0.0] // Trasparente
+};
 
 // ============================================================================
 // # METODO PER LA GENERAZIONE DELLA MESH
-// Questa funzione rimane la stessa, ma ora riceve direttamente i dati del chunk.
+// Questa funzione ora genera anche un array di colori dei vertici.
 // ============================================================================
-function generateMeshForChunk(chunkData, chunkWorldX, chunkWorldY, chunkWorldZ) {
+function generateMeshForChunk(chunkData) {
     if (chunkData.length === 0) {
-        return { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint16Array() };
+        return { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint16Array(), colors: new Float32Array() };
     }
 
     const positions = [];
     const normals = [];
     const indices = [];
+    const colors = []; // <- Nuovo array per i colori
     let indexOffset = 0;
 
     // Dati di un cubo con 6 facce separate
@@ -61,12 +70,16 @@ function generateMeshForChunk(chunkData, chunkWorldX, chunkWorldY, chunkWorldZ) 
                         if (neighborIsAir(neighborVoxel)) {
                             const faceData = cubeFaceData[faceIndex];
                             
-                            // Aggiungi vertici e normali
+                            // Aggiungi vertici, normali e colori
+                            const voxelColor = VoxelColors[voxel];
                             for (let i = 0; i < faceData.positions.length; i += 3) {
-                                positions.push(chunkWorldX + (x - 1) + faceData.positions[i] * 0.5);
-                                positions.push(chunkWorldY + (y - 1) + faceData.positions[i + 1] * 0.5);
-                                positions.push(chunkWorldZ + (z - 1) + faceData.positions[i + 2] * 0.5);
+                                // CORREZIONE POSIZIONAMENTO VERTICI:
+                                // Posizioni relative all'origine del chunk
+                                positions.push((x - 1) + faceData.positions[i] * 0.5);
+                                positions.push((y - 1) + faceData.positions[i + 1] * 0.5);
+                                positions.push((z - 1) + faceData.positions[i + 2] * 0.5);
                                 normals.push(faceData.normals[i], faceData.normals[i + 1], faceData.normals[i + 2]);
+                                colors.push(...voxelColor); // <- Aggiunto il colore
                             }
                             
                             // Aggiungi indici e aggiorna l'offset
@@ -84,14 +97,14 @@ function generateMeshForChunk(chunkData, chunkWorldX, chunkWorldY, chunkWorldZ) 
     return {
         positions: new Float32Array(positions),
         normals: new Float32Array(normals),
-        indices: new Uint16Array(indices)
+        indices: new Uint16Array(indices),
+        colors: new Float32Array(colors) // <- Invia il nuovo array
     };
 }
 
 
 // ============================================================================
 // # LOGICA DEL WORKER
-// Ora il worker si aspetta di ricevere il buffer di un singolo chunk
 // ============================================================================
 self.onmessage = async (event) => {
     const { type, chunkData, chunkX, chunkY, chunkZ } = event.data;
@@ -100,12 +113,7 @@ self.onmessage = async (event) => {
         try {
             console.log(`Worker: Avvio generazione mesh per il chunk (${chunkX}, ${chunkY}, ${chunkZ})...`);
 
-            const chunkWorldX = chunkX * CHUNK_SIZE;
-            const chunkWorldY = chunkY * CHUNK_SIZE;
-            const chunkWorldZ = chunkZ * CHUNK_SIZE;
-
-            // `chunkData` è già un ArrayBuffer, lo convertiamo in Uint8Array
-            const mesh = generateMeshForChunk(new Uint8Array(chunkData), chunkWorldX, chunkWorldY, chunkWorldZ);
+            const mesh = generateMeshForChunk(new Uint8Array(chunkData));
             
             console.log(`Worker: Generazione mesh completata. Invio i dati al thread principale.`);
             
@@ -114,7 +122,7 @@ self.onmessage = async (event) => {
                 type: 'meshGenerated',
                 chunkX, chunkY, chunkZ,
                 meshData: mesh
-            });
+            }, [mesh.positions.buffer, mesh.normals.buffer, mesh.indices.buffer, mesh.colors.buffer]);
 
         } catch (error) {
             console.error(`Worker: Errore critico durante la generazione della mesh del chunk.`, error);
