@@ -110,7 +110,6 @@ function generateMeshForChunk_Greedy(chunkData) {
     const dims = [CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE];
     const mask = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
     
-    // Iterate su ogni asse
     for (let axis = 0; axis < 3; axis++) {
         const u = (axis + 1) % 3;
         const v = (axis + 2) % 3;
@@ -118,10 +117,8 @@ function generateMeshForChunk_Greedy(chunkData) {
         const q = [0, 0, 0];
         q[axis] = 1;
 
-        // Iterate sulle fette
         for (x[axis] = -1; x[axis] < CHUNK_SIZE; x[axis]++) {
             let n = 0;
-            // Costruisci la maschera per la faccia corrente
             for (x[v] = 0; x[v] < CHUNK_SIZE; x[v]++) {
                 for (x[u] = 0; x[u] < CHUNK_SIZE; x[u]++) {
                     const i1 = (x[0] + 1) + CHUNK_SIZE_SHELL * ((x[1] + 1) + CHUNK_SIZE_SHELL * (x[2] + 1));
@@ -130,11 +127,16 @@ function generateMeshForChunk_Greedy(chunkData) {
                     const voxel1 = (x[axis] >= 0) ? chunkData[i1] : 0;
                     const voxel2 = (x[axis] < CHUNK_SIZE) ? chunkData[i2] : 0;
                     
+                    // CORREZIONE: Gestisci sia aria che nuvole come "spazio vuoto"
                     const isVoxel1Solid = voxel1 !== VOXEL_TYPES.Air && voxel1 !== VOXEL_TYPES.Cloud;
                     const isVoxel2Solid = voxel2 !== VOXEL_TYPES.Air && voxel2 !== VOXEL_TYPES.Cloud;
+                    const isVoxel1Transparent = voxel1 === VOXEL_TYPES.Cloud;
+                    const isVoxel2Transparent = voxel2 === VOXEL_TYPES.Cloud;
 
-                    if (isVoxel1Solid !== isVoxel2Solid) {
-                        mask[n] = isVoxel1Solid ? voxel1 : -voxel2;
+                    // Logica di culling corretta: disegna la faccia solo se c'è un cambio
+                    // tra un voxel solido e aria/trasparente, oppure tra due voxel trasparenti diversi.
+                    if ((isVoxel1Solid && !isVoxel2Solid) || (!isVoxel1Solid && isVoxel2Solid) || (isVoxel1Transparent !== isVoxel2Transparent && voxel1 !== 0 && voxel2 !== 0)) {
+                         mask[n] = (isVoxel1Solid || isVoxel1Transparent) ? voxel1 : -voxel2;
                     } else {
                         mask[n] = 0;
                     }
@@ -142,18 +144,15 @@ function generateMeshForChunk_Greedy(chunkData) {
                 }
             }
 
-            // Genera la mesh usando la maschera
             n = 0;
             for (x[v] = 0; x[v] < CHUNK_SIZE; x[v]++) {
                 for (x[u] = 0; x[u] < CHUNK_SIZE; x[u]++) {
                     if (mask[n] !== 0) {
                         const voxelValue = mask[n];
                         
-                        // Trova la larghezza del rettangolo
                         let w = 1;
                         for (; x[u] + w < CHUNK_SIZE && mask[n + w] === voxelValue; w++) {}
                         
-                        // Trova l'altezza del rettangolo
                         let h = 1;
                         let done = false;
                         for (; x[v] + h < CHUNK_SIZE; h++) {
@@ -180,6 +179,7 @@ function generateMeshForChunk_Greedy(chunkData) {
                         const v3 = [x[0] + b[0], x[1] + b[1], x[2] + b[2]];
                         const v4 = [x[0] + a[0] + b[0], x[1] + a[1] + b[1], x[2] + a[2] + b[2]];
 
+                        // CORREZIONE: Orientamento corretto dei vertici
                         if (sign > 0) {
                              positions.push(v1[0], v1[1], v1[2]);
                              positions.push(v3[0], v3[1], v3[2]);
