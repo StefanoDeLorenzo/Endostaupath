@@ -29,6 +29,7 @@
         
         const createScene = function () {
             const scene = new BABYLON.Scene(engine);
+            scene.ambientColor = new BABYLON.Color3(0.4, 0.4, 0.4); // Aggiunto: Colore ambientale
             
             const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
             camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
@@ -36,6 +37,7 @@
             
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
             light.intensity = 0.7;
+            light.specular = new BABYLON.Color3(0.5, 0.5, 0.5); // Aggiunto: Riflessione speculare
             
             if (window.Worker) {
                 loadRegionAndMeshAllChunks(0, 0, 0);
