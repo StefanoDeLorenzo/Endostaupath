@@ -22,11 +22,11 @@
         const canvas = document.getElementById("renderCanvas");
         const engine = new BABYLON.Engine(canvas, true);
         
-        // Invece di un solo worker, useremo una Map per gestirli
         const workers = new Map();
         const CHUNK_SIZE = 30;
-        const REGION_DIMENSION = 4; // 4x4x4 chunk per regione
-
+        const CHUNK_SIZE_SHELL = 32;
+        const REGION_DIMENSION = 4;
+        
         const createScene = function () {
             const scene = new BABYLON.Scene(engine);
             
@@ -38,7 +38,6 @@
             light.intensity = 0.7;
             
             if (window.Worker) {
-                // Carica la regione e avvia i worker per tutti i chunk
                 loadRegionAndMeshAllChunks(0, 0, 0);
             } else {
                 console.error("Il tuo browser non supporta i Web Worker.");
@@ -48,6 +47,23 @@
         };
 
         const scene = createScene();
+        
+        // Nuova funzione per estrarre i dati del singolo chunk da un ArrayBuffer
+        function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
+            const dataView = new DataView(buffer);
+            
+            const headerSize = 11;
+            const chunkIndex = chunkX + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkZ);
+            const chunkFileOffset = dataView.getUint32(headerSize + chunkIndex * 5, false);
+
+            if (chunkFileOffset === 0) {
+                return new Uint8Array(0);
+            }
+            
+            const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
+            const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
+            return new Uint8Array(chunkBuffer);
+        }
 
         async function loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
             try {
@@ -62,54 +78,59 @@
 
                 console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
                 
-                // Avvia un worker per ogni chunk
                 for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
                     for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
                         for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                            const chunkData = getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
+
+                            // Salta i chunk vuoti per evitare errori di Babylon.js
+                            if (chunkData.length === 0) {
+                                console.log(`Thread principale: Chunk (${chunkX}, ${chunkY}, ${chunkZ}) è vuoto. Salto.`);
+                                continue;
+                            }
+                            
                             const workerId = `chunk_${chunkX}_${chunkY}_${chunkZ}`;
                             const worker = new Worker('worker.js');
                             workers.set(workerId, worker);
                             
-                            // Gestione della comunicazione dal singolo worker
                             worker.onmessage = (event) => {
                                 const { type, chunkX, chunkY, chunkZ, meshData } = event.data;
                                 
                                 if (type === 'meshGenerated' && meshData) {
-                                    console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
-                                    
-                                    const customMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}`, scene);
-                                    
-                                    const vertexData = new BABYLON.VertexData();
-                                    vertexData.positions = meshData.positions;
-                                    vertexData.normals = meshData.normals;
-                                    vertexData.indices = meshData.indices;
-                                    vertexData.applyToMesh(customMesh);
-                                    
-                                    const worldX = regionX * (REGION_DIMENSION * CHUNK_SIZE) + chunkX * CHUNK_SIZE;
-                                    const worldY = regionY * (REGION_DIMENSION * CHUNK_SIZE) + chunkY * CHUNK_SIZE;
-                                    const worldZ = regionZ * (REGION_DIMENSION * CHUNK_SIZE) + chunkZ * CHUNK_SIZE;
-                                    customMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                    
-                                    const material = new BABYLON.StandardMaterial("material", scene);
-                                    material.diffuseColor = new BABYLON.Color3(0.5, 0.5, 0.5);
-                                    customMesh.material = material;
+                                    if (meshData.positions.length > 0) {
+                                        console.log(`Thread principale: Mesh ricevuta per il chunk (${chunkX}, ${chunkY}, ${chunkZ}).`);
+                                        
+                                        const customMesh = new BABYLON.Mesh(`chunk_${chunkX}_${chunkY}_${chunkZ}`, scene);
+                                        
+                                        const vertexData = new BABYLON.VertexData();
+                                        vertexData.positions = meshData.positions;
+                                        vertexData.normals = meshData.normals;
+                                        vertexData.indices = meshData.indices;
+                                        vertexData.applyToMesh(customMesh);
+                                        
+                                        const worldX = regionX * (REGION_DIMENSION * CHUNK_SIZE) + chunkX * CHUNK_SIZE;
+                                        const worldY = regionY * (REGION_DIMENSION * CHUNK_SIZE) + chunkY * CHUNK_SIZE;
+                                        const worldZ = regionZ * (REGION_DIMENSION * CHUNK_SIZE) + chunkZ * CHUNK_SIZE;
+                                        customMesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                        
+                                        const material = new BABYLON.StandardMaterial("material", scene);
+                                        material.diffuseColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+                                        customMesh.material = material;
+                                    } else {
+                                        console.log(`Thread principale: Il chunk (${chunkX}, ${chunkY}, ${chunkZ}) ha una mesh vuota. Probabilmente aria.`);
+                                    }
 
-                                    // Termina il worker dopo che ha completato il suo lavoro
                                     worker.terminate();
                                     workers.delete(workerId);
                                 }
                             };
                             
-                            // Invia una copia dell'ArrayBuffer al singolo worker.
-                            // Inviare una copia è meno efficiente ma più semplice per un singolo file.
-                            // Per regioni più grandi si dovrebbe pensare a un sistema di trasferimento più complesso
-                            // per non copiare il buffer 64 volte.
+                            // Invia il piccolo ArrayBuffer al worker
                             worker.postMessage({
                                 type: 'generateMeshFromChunk',
-                                regionBuffer: buffer.slice(0), // Crea una copia per ogni worker
-                                regionX, regionY, regionZ,
+                                chunkData: chunkData.buffer, // Invia il buffer del chunk
                                 chunkX, chunkY, chunkZ
-                            });
+                            }, [chunkData.buffer]); 
                         }
                     }
                 }
