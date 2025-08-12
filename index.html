@@ -29,19 +29,25 @@
         
         const createScene = function () {
             const scene = new BABYLON.Scene(engine);
-            scene.ambientColor = new BABYLON.Color3(0.4, 0.4, 0.4); // Aggiunto: Colore ambientale
             
             const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, -60), scene);
             camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
             camera.attachControl(canvas, true);
+
+            // Aggiungiamo un'Environment Texture per una corretta illuminazione PBR
+            const hdrTexture = new BABYLON.HDRCubeTexture(
+                "https://www.babylonjs-playground.com/textures/environment.env",
+                scene,
+                512
+            );
+            scene.environmentTexture = hdrTexture;
+            scene.environmentIntensity = 1.0; // Intensità dell'ambiente
+
+            // Usiamo una luce direzionale che simula il sole
+            const light = new BABYLON.DirectionalLight("dir01", new BABYLON.Vector3(-1, -2, 1), scene);
+            light.position = new BABYLON.Vector3(60, 60, -60);
+            light.intensity = 2; // Aumento l'intensità per renderla ben visibile
             
-            const light = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(60, 60, 60), scene);
-            light.intensity = 1.5; // Aumentiamo un po' l'intensità
-            /*
-            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
-            light.intensity = 0.7;
-            light.specular = new BABYLON.Color3(0.5, 0.5, 0.5); // Aggiunto: Riflessione speculare
-            */
             if (window.Worker) {
                 loadRegionAndMeshAllChunks(0, 0, 0);
             } else {
@@ -53,24 +59,21 @@
 
         const scene = createScene();
         
-        // Mappa i tipi di voxel a materiali unici per la scena.
-        // Se un materiale esiste già, lo riutilizziamo.
         const sceneMaterials = {};
         function getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
-        if (!sceneMaterials[voxelType]) {
-            // Usa un PBRMaterial, che gestisce meglio la trasparenza
-            const material = new BABYLON.PBRMaterial(`material_${voxelType}`, scene);
-            material.useVertexColors = true;
-            
-            if (isTransparent) {
-                material.alpha = materialAlpha;
-                material.backFaceCulling = false; // Importante per la trasparenza
+            if (!sceneMaterials[voxelType]) {
+                const material = new BABYLON.PBRMaterial(`material_${voxelType}`, scene);
+                material.useVertexColors = true;
+                
+                if (isTransparent) {
+                    material.alpha = materialAlpha;
+                    material.backFaceCulling = false;
+                }
+                
+                sceneMaterials[voxelType] = material;
             }
-            
-            sceneMaterials[voxelType] = material;
+            return sceneMaterials[voxelType];
         }
-        return sceneMaterials[voxelType];
-    }
 
         function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
             const dataView = new DataView(buffer);
@@ -138,16 +141,9 @@
                                             Object.assign(vertexData, meshData);
                                             vertexData.applyToMesh(mesh);
 
-                                            
-                                            
                                             const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
-
-                                            // Riga di debug per verificare il tipo di mesh e la sua trasparenza
-                                            if (isTransparent) {
-                                                console.log(`Mesh trasparente: ${meshName}, Alpha: ${materialAlpha}`);
-                                            }
-
-                                            mesh.material = getOrCreateMaterial(voxelType, isTransparent);
+                                            
+                                            mesh.material = getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                             mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                         }
                                     }
