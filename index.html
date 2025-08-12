@@ -22,7 +22,8 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        camera.position.z = 5;
+        // Posiziona la telecamera inizialmente a una distanza ragionevole
+        camera.position.set(CHUNK_SIZE_LOGIC * 0.5, CHUNK_SIZE_LOGIC * 2, CHUNK_SIZE_LOGIC * 2);
 
         // Gestione delle luci
         const ambientLight = new THREE.AmbientLight(0x404040, 2);
@@ -37,6 +38,7 @@
         const loadingRegions = new Map();
         const regions = new Map();
 
+        // Variabili del giocatore per il caricamento dinamico
         let playerChunkX = 0;
         let playerChunkY = 0;
         let playerChunkZ = 0;
@@ -50,7 +52,6 @@
             const regionY = Math.floor(chunkY / REGION_HEIGHT);
             const regionZ = Math.floor(chunkZ / REGION_CHUNKS);
 
-            // CORREZIONE: Aggiunto il percorso relativo "./regions/"
             const regionKey = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
 
             if (!regions.has(regionKey)) {
@@ -74,9 +75,9 @@
                 return;
             }
 
-            const chunkLocalX = chunkX % REGION_CHUNKS;
-            const chunkLocalY = chunkY % REGION_HEIGHT;
-            const chunkLocalZ = chunkZ % REGION_CHUNKS;
+            const chunkLocalX = ((chunkX % REGION_CHUNKS) + REGION_CHUNKS) % REGION_CHUNKS;
+            const chunkLocalY = ((chunkY % REGION_HEIGHT) + REGION_HEIGHT) % REGION_HEIGHT;
+            const chunkLocalZ = ((chunkZ % REGION_CHUNKS) + REGION_CHUNKS) % REGION_CHUNKS;
             
             worker.postMessage({
                 type: 'loadChunkFromRegion',
@@ -120,8 +121,27 @@
         };
 
         function updateChunks() {
-            // Per il momento carichiamo solo un chunk per test
-            loadChunk(0, 0, 0); 
+            const currentChunkX = Math.floor(camera.position.x / CHUNK_SIZE_LOGIC);
+            const currentChunkY = Math.floor(camera.position.y / CHUNK_SIZE_LOGIC);
+            const currentChunkZ = Math.floor(camera.position.z / CHUNK_SIZE_LOGIC);
+
+            if (currentChunkX !== playerChunkX || currentChunkY !== playerChunkY || currentChunkZ !== playerChunkZ) {
+                playerChunkX = currentChunkX;
+                playerChunkY = currentChunkY;
+                playerChunkZ = currentChunkZ;
+                console.log(`Caricamento nuovi chunk attorno a: ${playerChunkX}, ${playerChunkY}, ${playerChunkZ}`);
+
+                for (let x = -renderDistance; x <= renderDistance; x++) {
+                    for (let y = -renderDistance; y <= renderDistance; y++) {
+                        for (let z = -renderDistance; z <= renderDistance; z++) {
+                            const chunkX = playerChunkX + x;
+                            const chunkY = playerChunkY + y;
+                            const chunkZ = playerChunkZ + z;
+                            loadChunk(chunkX, chunkY, chunkZ);
+                        }
+                    }
+                }
+            }
         }
 
         function animate() {
