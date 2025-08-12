@@ -22,7 +22,6 @@
         const CHUNK_SIZE = 30;
         const CHUNK_SIZE_SHELL = 32;
         const REGION_DIMENSION = 4;
-        const RENDER_DISTANCE = 2; // Raggio di regioni da caricare attorno al giocatore
 
         class SceneManager {
             constructor(scene, engine, canvas) {
@@ -31,7 +30,6 @@
                 this.canvas = canvas;
                 this.workers = new Map();
                 this.sceneMaterials = {};
-                this.loadedRegions = new Set();
                 this.initializeScene();
             }
 
@@ -87,21 +85,13 @@
             }
 
             async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
-                const regionKey = `${regionX},${regionY},${regionZ}`;
-                if (this.loadedRegions.has(regionKey)) {
-                    return;
-                }
-                this.loadedRegions.add(regionKey);
-
                 try {
                     const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
                     console.log(`Thread principale: Caricamento del file ${regionPath}...`);
                     const response = await fetch(regionPath);
-
                     if (!response.ok) {
-                        console.log(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
-                        this.loadedRegions.delete(regionKey); // Rimuovi dalla lista per poterla riprovare in seguito
-                        return; // Non caricare nulla se la regione non esiste
+                        console.error(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
+                        return;
                     }
 
                     const buffer = await response.arrayBuffer();
@@ -151,48 +141,6 @@
                     }
                 } catch (error) {
                     console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
-                    this.loadedRegions.delete(regionKey);
-                }
-            }
-
-            unloadRegion(regionX, regionY, regionZ) {
-                const regionKey = `${regionX},${regionY},${regionZ}`;
-                if (!this.loadedRegions.has(regionKey)) {
-                    return;
-                }
-                const meshes = this.scene.meshes.filter(mesh => mesh.name.startsWith(`chunk_${regionX}_${regionY}_${regionZ}`));
-                meshes.forEach(mesh => {
-                    mesh.dispose();
-                });
-                this.loadedRegions.delete(regionKey);
-                console.log(`Regione (${regionX}, ${regionY}, ${regionZ}) scaricata.`);
-            }
-
-            updateRegions(playerPosition) {
-                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
-                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
-                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
-
-                const regionsToLoad = new Set();
-                for (let x = -RENDER_DISTANCE; x <= RENDER_DISTANCE; x++) {
-                    for (let y = -RENDER_DISTANCE; y <= RENDER_DISTANCE; y++) {
-                        for (let z = -RENDER_DISTANCE; z <= RENDER_DISTANCE; z++) {
-                            const regionX = currentRegionX + x;
-                            const regionY = currentRegionY + y;
-                            const regionZ = currentRegionZ + z;
-                            const regionKey = `${regionX},${regionY},${regionZ}`;
-                            regionsToLoad.add(regionKey);
-                            this.loadRegionAndMeshAllChunks(regionX, regionY, regionZ);
-                        }
-                    }
-                }
-
-                const regionsToUnload = new Set(this.loadedRegions);
-                for (const regionKey of regionsToUnload) {
-                    if (!regionsToLoad.has(regionKey)) {
-                        const [regionX, regionY, regionZ] = regionKey.split(',').map(Number);
-                        this.unloadRegion(regionX, regionY, regionZ);
-                    }
                 }
             }
         }
@@ -203,11 +151,13 @@
                 this.engine = new BABYLON.Engine(this.canvas, true);
                 this.scene = new BABYLON.Scene(this.engine);
                 this.sceneManager = new SceneManager(this.scene, this.engine, this.canvas);
-                this.player = this.scene.activeCamera;
             }
 
             start() {
-                // Avvia il loop di rendering
+                // Carica esplicitamente due regioni adiacenti sull'asse X
+                this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
+                this.sceneManager.loadRegionAndMeshAllChunks(1, 0, 0);
+
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
                 });
@@ -215,15 +165,9 @@
                 window.addEventListener("resize", () => {
                     this.engine.resize();
                 });
-
-                // Avvia il timer per aggiornare le regioni
-                setInterval(() => {
-                    this.sceneManager.updateRegions(this.player.position);
-                }, 2000);
             }
         }
         
-        // Avvio del gioco
         const game = new Game("renderCanvas");
         game.start();
     </script>
