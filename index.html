@@ -52,7 +52,7 @@
             const dataView = new DataView(buffer);
             
             const headerSize = 11;
-            const chunkIndex = chunkX + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkZ);
+            const chunkIndex = chunkX + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
             
             const offsetIndex = headerSize + chunkIndex * 5;
             const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
