@@ -63,7 +63,13 @@ function generateMeshForChunk_Voxel(chunkData) {
                         const [ox, oy, oz] = offset;
                         const neighborVoxel = chunkData[(x + ox) + CHUNK_SIZE_SHELL * ((y + oy) + CHUNK_SIZE_SHELL * (z + oz))];
                         
-                        const neighborIsAir = (v) => v === VOXEL_TYPES.Air || v === VOXEL_TYPES.Cloud;
+                        let neighborIsAir;
+
+                        if (voxel !== VOXEL_TYPES.Cloud) {
+                            neighborIsAir = (v) => v === VOXEL_TYPES.Air || v === VOXEL_TYPES.Cloud;
+                        } else {
+                            neighborIsAir = (v) => v === VOXEL_TYPES.Air;
+                        }
                         
                         if (neighborIsAir(neighborVoxel)) {
                             const faceData = cubeFaceData[faceIndex];
