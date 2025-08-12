@@ -1,9 +1,12 @@
-// Implementazione di un semplice rumore Perlin 3D.
-// Basato su una versione del Perlin di Ken Perlin del 2002.
+// generator.js - Worker per la generazione di regioni Voxel
+
+// ============================================================================
+// # IMPLEMENTAZIONE DEL RUMORE PERLIN 3D
+// Basata su una versione standard di Ken Perlin del 2002.
+// ============================================================================
 function perlinNoise3D(x, y, z) {
     const p = new Uint8Array(512);
-    const permutation = [
-        151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 175, 87, 86, 232, 199, 158, 58, 77, 24, 226, 207, 170, 182, 179, 5, 236, 123, 110, 150, 134, 100, 16, 93, 249, 112, 192, 169, 211, 218, 128, 76, 139, 115, 127, 245, 196, 49, 176, 185, 19, 147, 238, 156, 46, 143, 205, 107, 253, 178, 13, 242, 198, 11, 101, 145, 14, 18, 184, 194, 204, 173, 212, 152, 17, 18, 239, 210, 129, 172, 197, 45, 78, 16, 188, 104, 19, 181, 244, 209, 184, 96, 22, 216, 73, 126, 10, 215, 200, 162, 105, 114, 246, 209, 138, 12, 47, 118, 24, 165, 208, 22, 98, 166, 15, 102, 235, 221, 16, 233, 11, 198, 48, 149, 102, 60, 250, 173, 228, 14, 212, 213, 221, 203, 167, 235, 195, 219, 171, 15, 168, 158, 204, 135, 16, 70, 113, 187, 164, 119, 180, 251, 80, 14, 60, 159, 177, 224, 225, 230, 239, 216, 24, 111, 218, 202, 90, 89, 74, 169, 186, 206, 61, 91, 15, 217, 132, 21, 10, 12, 159, 168, 79, 167, 12, 143, 205, 193, 214, 112, 43, 25, 243, 85, 246, 163, 145, 154, 97, 113, 144, 171, 122, 191, 162, 248, 201, 220, 4, 189, 222, 247, 65, 133, 254, 195, 20, 231, 183, 174, 15
+    const permutation = [151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 175, 87, 86, 232, 199, 158, 58, 77, 24, 226, 207, 170, 182, 179, 5, 236, 123, 110, 150, 134, 100, 16, 93, 249, 112, 192, 169, 211, 218, 128, 76, 139, 115, 127, 245, 196, 49, 176, 185, 19, 147, 238, 156, 46, 143, 205, 107, 253, 178, 13, 242, 198, 11, 101, 145, 14, 18, 184, 194, 204, 173, 212, 152, 17, 18, 239, 210, 129, 172, 197, 45, 78, 16, 188, 104, 19, 181, 244, 209, 184, 96, 22, 216, 73, 126, 10, 215, 200, 162, 105, 114, 246, 209, 138, 12, 47, 118, 24, 165, 208, 22, 98, 166, 15, 102, 235, 221, 16, 233, 11, 198, 48, 149, 102, 60, 250, 173, 228, 14, 212, 213, 221, 203, 167, 235, 195, 219, 171, 15, 168, 158, 204, 135, 16, 70, 113, 187, 164, 119, 180, 251, 80, 14, 60, 159, 177, 224, 225, 230, 239, 216, 24, 111, 218, 202, 90, 89, 74, 169, 186, 206, 61, 91, 15, 217, 132, 21, 10, 12, 159, 168, 79, 167, 12, 143, 205, 193, 214, 112, 43, 25, 243, 85, 246, 163, 145, 154, 97, 113, 144, 171, 122, 191, 162, 248, 201, 220, 4, 189, 222, 247, 65, 133, 254, 195, 20, 231, 183, 174, 15
     ];
     for (let i = 0; i < 256; i++) {
         p[i] = p[i + 256] = permutation[i];
@@ -39,6 +42,9 @@ function perlinNoise3D(x, y, z) {
             lerp(u, grad(p[A1 + 1], x, y - 1, z - 1), grad(p[B1 + 1], x - 1, y - 1, z - 1))));
 }
 
+// ============================================================================
+// # COSTANTI E CLASSI
+// ============================================================================
 
 const SKY_LEVEL = 50; 
 const GROUND_LEVEL = 10;
@@ -257,38 +263,59 @@ class WorldGenerator {
     }
 }
 
+// ============================================================================
+// # LOGICA DEL WORKER
+// ============================================================================
 const generator = new WorldGenerator();
 
 self.onmessage = async (event) => {
+    console.log("Worker: Messaggio ricevuto dal thread principale.", event.data);
     const { type, regionX, regionY, regionZ } = event.data;
 
     if (type === 'generateRegion') {
-        const fromX = regionX - 1, toX = regionX + 1;
-        const fromY = regionY - 1, toY = regionY + 1;
-        const fromZ = regionZ - 1, toZ = regionZ + 1;
-        
-        for (let x = fromX; x <= toX; x++) {
-            for (let y = fromY; y <= toY; y++) {
-                for (let z = fromZ; z <= toZ; z++) {
-                    for(let cx = 0; cx < 4; cx++) {
-                        for(let cy = 0; cy < 4; cy++) {
-                            for(let cz = 0; cz < 4; cz++) {
-                                generator.getOrCreateChunk(x, y, z, cx, cy, cz);
+        try {
+            console.log(`Worker: Avvio generazione per la regione (${regionX}, ${regionY}, ${regionZ})...`);
+            
+            // Popola la cache per la regione corrente e i suoi vicini
+            const fromX = regionX - 1, toX = regionX + 1;
+            const fromY = regionY - 1, toY = regionY + 1;
+            const fromZ = regionZ - 1, toZ = regionZ + 1;
+            
+            for (let x = fromX; x <= toX; x++) {
+                for (let y = fromY; y <= toY; y++) {
+                    for (let z = fromZ; z <= toZ; z++) {
+                        for(let cx = 0; cx < 4; cx++) {
+                            for(let cy = 0; cy < 4; cy++) {
+                                for(let cz = 0; cz < 4; cz++) {
+                                    generator.getOrCreateChunk(x, y, z, cx, cy, cz);
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        const buffer = generator.writeRegionFile(regionX, regionY, regionZ);
-        
-        self.postMessage({
-            type: 'regionGenerated',
-            regionX: regionX,
-            regionY: regionY,
-            regionZ: regionZ,
-            buffer: buffer
-        }, [buffer]);
+            const buffer = generator.writeRegionFile(regionX, regionY, regionZ);
+            
+            console.log(`Worker: Generazione completata per la regione (${regionX}, ${regionY}, ${regionZ}). Invio i dati al thread principale.`);
+            
+            self.postMessage({
+                type: 'regionGenerated',
+                regionX: regionX,
+                regionY: regionY,
+                regionZ: regionZ,
+                buffer: buffer
+            }, [buffer]);
+
+        } catch (error) {
+            console.error(`Worker: Errore critico durante la generazione della regione (${regionX}, ${regionY}, ${regionZ}).`, error);
+            self.postMessage({
+                type: 'error',
+                regionX: regionX,
+                regionY: regionY,
+                regionZ: regionZ,
+                message: error.message
+            });
+        }
     }
 };
