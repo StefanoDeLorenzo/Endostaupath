@@ -52,19 +52,20 @@
         // Se un materiale esiste già, lo riutilizziamo.
         const sceneMaterials = {};
         function getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
-            if (!sceneMaterials[voxelType]) {
-                const material = new BABYLON.StandardMaterial(`material_${voxelType}`, scene);
-                material.useVertexColors = true;
-
-                if (isTransparent) {
-                    material.hasAlpha = true;
-                    material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
-                    material.alpha = materialAlpha; // Nuova riga
-                }
-                sceneMaterials[voxelType] = material;
+        if (!sceneMaterials[voxelType]) {
+            // Usa un PBRMaterial, che gestisce meglio la trasparenza
+            const material = new BABYLON.PBRMaterial(`material_${voxelType}`, scene);
+            material.useVertexColors = true;
+            
+            if (isTransparent) {
+                material.alpha = materialAlpha;
+                material.backFaceCulling = false; // Importante per la trasparenza
             }
-            return sceneMaterials[voxelType];
+            
+            sceneMaterials[voxelType] = material;
         }
+        return sceneMaterials[voxelType];
+    }
 
         function getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
             const dataView = new DataView(buffer);
