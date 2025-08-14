@@ -198,6 +198,7 @@
                 this.scene = new BABYLON.Scene(this.engine);
                 this.sceneManager = new SceneManager(this.scene, this.engine, this.canvas);
                 this.player = this.scene.activeCamera;
+                this.lastChunk = { x: null, y: null, z: null };
             }
 
             start() {
