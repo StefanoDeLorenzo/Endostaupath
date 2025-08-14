@@ -194,6 +194,13 @@
                                 const mesh = new BABYLON.Mesh(meshName, this.scene);
                                 const vertexData = new BABYLON.VertexData();
                                 Object.assign(vertexData, meshData);
+
+                                // Ricalcola le normali basandosi sulle posizioni dei vertici.
+                                // Il parametro `true` indica di sovrascrivere le normali esistenti.
+                                // Se funzione devo rimuovere da worker.js la riga che calcola le normali
+                                // perchè altrimenti si calcolano due volte.
+                                vertexData.computeNormals(true); 
+
                                 vertexData.applyToMesh(mesh);
                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
