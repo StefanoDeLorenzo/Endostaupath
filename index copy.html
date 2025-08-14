@@ -32,7 +32,7 @@
                 this.sceneMaterials = {};
                 this.loadedChunks = new Set();
                 this.loadedRegions = new Set();
-                this.regionsData = new Map();
+                this.regionsData = new Map(); // Mappa per memorizzare i dati delle regioni
                 this.initializeScene();
             }
 
@@ -72,6 +72,7 @@
                 return this.sceneMaterials[voxelType];
             }
             
+            // Metodo per estrarre i dati di un chunk da un buffer della regione
             getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
                 const dataView = new DataView(buffer);
                 const headerSize = 11;
@@ -87,6 +88,7 @@
                 return new Uint8Array(chunkBuffer);
             }
             
+            // Nuovo metodo per ottenere i dati di un chunk da una regione già in memoria
             getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
                 const regionKey = `${regionX}_${regionY}_${regionZ}`;
                 if (!this.regionsData.has(regionKey)) {
@@ -96,9 +98,10 @@
                 return this.getChunkDataFromRegionBuffer(regionBuffer, chunkX, chunkY, chunkZ);
             }
 
-            async fetchAndStoreRegionData(regionX, regionY, regionZ) {
+            async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
                 const regionKey = `${regionX}_${regionY}_${regionZ}`;
                 if (this.loadedRegions.has(regionKey)) {
+                    console.log(`Regione (${regionX}, ${regionY}, ${regionZ}) già caricata. Saltato il caricamento.`);
                     return;
                 }
                 
@@ -108,135 +111,73 @@
                     const response = await fetch(regionPath);
                     if (!response.ok) {
                         console.error(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
-                        this.loadedRegions.add(regionKey);
                         return;
                     }
+
                     const buffer = await response.arrayBuffer();
                     console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
-                    this.loadedRegions.add(regionKey);
-                    this.regionsData.set(regionKey, buffer);
+                    
+                    this.loadedRegions.add(regionKey); // Regione considerata caricata dopo il fetch
+                    this.regionsData.set(regionKey, buffer); // Memorizza il buffer della regione
+                    
+                    for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                        for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                            for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                                if (this.loadedChunks.has(chunkKey)) {
+                                    continue;
+                                }
+
+                                const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
+                                if (chunkData === null) {
+                                    continue;
+                                }
+                                const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                                const worker = new Worker('worker.js');
+                                this.workers.set(workerId, worker);
+                                
+                                worker.onmessage = (event) => {
+                                    const { type, meshDataByVoxelType, voxelOpacity } = event.data;
+                                    
+                                    this.loadedChunks.add(chunkKey);
+                                    
+                                    if (type === 'meshGenerated' && meshDataByVoxelType) {
+                                        const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
+                                        const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
+                                        const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
+                                        for (const voxelType in meshDataByVoxelType) {
+                                            const meshData = meshDataByVoxelType[voxelType];
+                                            if (meshData.positions.length > 0) {
+                                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+                                                const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
+                                                const mesh = new BABYLON.Mesh(meshName, this.scene);
+                                                const vertexData = new BABYLON.VertexData();
+                                                Object.assign(vertexData, meshData);
+                                                vertexData.applyToMesh(mesh);
+                                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
+                                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
+                                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                            }
+                                        }
+                                        worker.terminate();
+                                        this.workers.delete(workerId);
+                                    }
+                                };
+                                
+                                worker.postMessage({
+                                    type: 'generateMeshFromChunk',
+                                    chunkData: chunkData.buffer,
+                                    chunkX, chunkY, chunkZ
+                                }, [chunkData.buffer]);
+                            }
+                        }
+                    }
                 } catch (error) {
                     console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
                 }
             }
             
-            async loadChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                if (this.loadedChunks.has(chunkKey)) {
-                    return;
-                }
-                
-                await this.fetchAndStoreRegionData(regionX, regionY, regionZ);
-                
-                const chunkData = this.getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
-
-                if (chunkData === null) {
-                    this.loadedChunks.add(chunkKey);
-                    return;
-                }
-                
-                const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                const worker = new Worker('worker.js');
-                this.workers.set(workerId, worker);
-                
-                worker.onmessage = (event) => {
-                    const { type, meshDataByVoxelType, voxelOpacity } = event.data;
-                    
-                    this.loadedChunks.add(chunkKey);
-                    
-                    if (type === 'meshGenerated' && meshDataByVoxelType) {
-                        const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
-                        const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
-                        const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
-                        for (const voxelType in meshDataByVoxelType) {
-                            const meshData = meshDataByVoxelType[voxelType];
-                            if (meshData.positions.length > 0) {
-                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
-                                const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
-                                const mesh = new BABYLON.Mesh(meshName, this.scene);
-                                const vertexData = new BABYLON.VertexData();
-                                Object.assign(vertexData, meshData);
-                                vertexData.applyToMesh(mesh);
-                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
-                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
-                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                            }
-                        }
-                        worker.terminate();
-                        this.workers.delete(workerId);
-                    }
-                };
-                
-                worker.postMessage({
-                    type: 'generateMeshFromChunk',
-                    chunkData: chunkData.buffer,
-                    chunkX, chunkY, chunkZ
-                }, [chunkData.buffer]);
-            }
-            
-            // Metodo per il caricamento iniziale di un'intera regione
-            async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
-                await this.fetchAndStoreRegionData(regionX, regionY, regionZ);
-                
-                for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
-                    for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
-                        for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
-                            await this.loadChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
-                        }
-                    }
-                }
-            }
-
-            findChunksToLoad(playerPosition) {
-                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
-                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
-                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
-
-                const currentChunkX = Math.floor((playerPosition.x - currentRegionX * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
-                const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
-                const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
-                
-                const chunksToLoad = [];
-                
-                for (let x = -1; x <= 1; x++) {
-                    for (let y = -1; y <= 1; y++) {
-                        for (let z = -1; z <= 1; z++) {
-                            const worldChunkX = currentChunkX + x;
-                            const worldChunkY = currentChunkY + y;
-                            const worldChunkZ = currentChunkZ + z;
-                            
-                            const adjacentRegionX = currentRegionX + Math.floor(worldChunkX / REGION_DIMENSION);
-                            const adjacentRegionY = currentRegionY + Math.floor(worldChunkY / REGION_DIMENSION);
-                            const adjacentRegionZ = currentRegionZ + Math.floor(worldChunkZ / REGION_DIMENSION);
-
-                            const adjacentChunkX = (worldChunkX % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
-                            const adjacentChunkY = (worldChunkY % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
-                            const adjacentChunkZ = (worldChunkZ % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
-                            
-                            const adjacentChunkKey = `${adjacentRegionX}_${adjacentRegionY}_${adjacentRegionZ}_${adjacentChunkX}_${adjacentChunkY}_${adjacentChunkZ}`;
-                            if (!this.loadedChunks.has(adjacentChunkKey)) {
-                                chunksToLoad.push({
-                                    regionX: adjacentRegionX,
-                                    regionY: adjacentRegionY,
-                                    regionZ: adjacentRegionZ,
-                                    chunkX: adjacentChunkX,
-                                    chunkY: adjacentChunkY,
-                                    chunkZ: adjacentChunkZ
-                                });
-                            }
-                        }
-                    }
-                }
-                return chunksToLoad;
-            }
-            
-            async loadMissingChunks(chunksToLoad) {
-                for (const chunk of chunksToLoad) {
-                    await this.loadChunk(chunk.regionX, chunk.regionY, chunk.regionZ, chunk.chunkX, chunk.chunkY, chunk.chunkZ);
-                }
-            }
-            
-            printDebugInfo(playerPosition, chunksToLoad) {
+            printChunkAndRegionInfo(playerPosition) {
                 const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
                 const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
                 const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
@@ -252,8 +193,34 @@
                 const currentChunkKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}_${currentChunkX}_${currentChunkY}_${currentChunkZ}`;
                 console.log(`Chunk Attuale: (${currentChunkX}, ${currentChunkY}, ${currentChunkZ}) - Caricato: ${this.loadedChunks.has(currentChunkKey)}`);
                 console.log("-----------------------------------------");
-                console.log(`Trovati ${chunksToLoad.length} chunk da caricare nelle vicinanze.`);
-                console.log("-----------------------------------------");
+                console.log("Chunk adiacenti (e le loro regioni):");
+                
+                for (let x = -1; x <= 1; x++) {
+                    for (let y = -1; y <= 1; y++) {
+                        for (let z = -1; z <= 1; z++) {
+                            if (x === 0 && y === 0 && z === 0) {
+                                continue;
+                            }
+                            
+                            const worldChunkX = currentChunkX + x;
+                            const worldChunkY = currentChunkY + y;
+                            const worldChunkZ = currentChunkZ + z;
+                            
+                            const adjacentRegionX = currentRegionX + Math.floor(worldChunkX / REGION_DIMENSION);
+                            const adjacentRegionY = currentRegionY + Math.floor(worldChunkY / REGION_DIMENSION);
+                            const adjacentRegionZ = currentRegionZ + Math.floor(worldChunkZ / REGION_DIMENSION);
+
+                            const adjacentChunkX = (worldChunkX % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            const adjacentChunkY = (worldChunkY % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            const adjacentChunkZ = (worldChunkZ % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            
+                            const adjacentChunkKey = `${adjacentRegionX}_${adjacentRegionY}_${adjacentRegionZ}_${adjacentChunkX}_${adjacentChunkY}_${adjacentChunkZ}`;
+                            const isLoaded = this.loadedChunks.has(adjacentChunkKey);
+                            
+                            console.log(`Chunk adiacente: (${adjacentChunkX}, ${adjacentChunkY}, ${adjacentChunkZ}) nella Regione (${adjacentRegionX}, ${adjacentRegionY}, ${adjacentRegionZ}) - Caricato: ${isLoaded}`);
+                        }
+                    }
+                }
             }
         }
 
@@ -268,11 +235,10 @@
                 this.lastChunk = { x: null, y: null, z: null };
             }
 
-            async start() {
-                // Caricamento iniziale di due regioni all'avvio
-                await this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
-                await this.sceneManager.loadRegionAndMeshAllChunks(1, 0, 0);
-                
+            start() {
+                this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
+                this.sceneManager.loadRegionAndMeshAllChunks(1, 0, 0);
+
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
                     this.checkCameraPosition();
@@ -294,11 +260,7 @@
                 const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
 
                 if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
-                    const chunksToLoad = this.sceneManager.findChunksToLoad(playerPosition);
-                    if (chunksToLoad.length > 0) {
-                        this.sceneManager.loadMissingChunks(chunksToLoad);
-                    }
-                    this.sceneManager.printDebugInfo(playerPosition, chunksToLoad);
+                    this.sceneManager.printChunkAndRegionInfo(playerPosition);
                     this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
                 }
             }
