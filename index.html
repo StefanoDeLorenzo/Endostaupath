@@ -114,6 +114,8 @@
                                 const worker = new Worker('worker.js');
                                 this.workers.set(workerId, worker);
                                 
+                                this.loadedChunks.add(chunkKey);
+
                                 worker.onmessage = (event) => {
                                     const { type, meshDataByVoxelType, voxelOpacity } = event.data;
                                     if (type === 'meshGenerated' && meshDataByVoxelType) {
@@ -133,7 +135,7 @@
                                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                             }
-                                            this.loadedChunks.add(chunkKey);
+                                            
                                         }
                                         worker.terminate();
                                         this.workers.delete(workerId);
