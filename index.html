@@ -30,7 +30,7 @@
                 this.canvas = canvas;
                 this.workers = new Map();
                 this.sceneMaterials = {};
-                this.loadedChunks = new Set(); // Nuovo Set per tracciare i chunk caricati
+                this.loadedChunks = new Set();
                 this.initializeScene();
             }
 
@@ -132,7 +132,7 @@
                                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
                                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                                this.loadedChunks.add(chunkKey); // Aggiunge il chunk al set dei caricati
+                                                this.loadedChunks.add(chunkKey);
                                             }
                                         }
                                         worker.terminate();
@@ -165,7 +165,8 @@
                 console.log("-----------------------------------------");
                 console.log(`Posizione Camera: X: ${playerPosition.x}, Y: ${playerPosition.y}, Z: ${playerPosition.z}`);
                 console.log(`Regione Attuale: (${currentRegionX}, ${currentRegionY}, ${currentRegionZ})`);
-                console.log(`Chunk Attuale: (${currentChunkX}, ${currentChunkY}, ${currentChunkZ})`);
+                const currentChunkKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}_${currentChunkX}_${currentChunkY}_${currentChunkZ}`;
+                console.log(`Chunk Attuale: (${currentChunkX}, ${currentChunkY}, ${currentChunkZ}) - Caricato: ${this.loadedChunks.has(currentChunkKey)}`);
                 console.log("-----------------------------------------");
                 console.log("Chunk adiacenti (e le loro regioni):");
                 
@@ -187,20 +188,13 @@
                             const adjacentChunkX = (worldChunkX % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
                             const adjacentChunkY = (worldChunkY % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
                             const adjacentChunkZ = (worldChunkZ % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
-
-                            console.log(`Chunk adiacente: (${adjacentChunkX}, ${adjacentChunkY}, ${adjacentChunkZ}) nella Regione (${adjacentRegionX}, ${adjacentRegionY}, ${adjacentRegionZ})`);
+                            
+                            const adjacentChunkKey = `${adjacentRegionX}_${adjacentRegionY}_${adjacentRegionZ}_${adjacentChunkX}_${adjacentChunkY}_${adjacentChunkZ}`;
+                            const isLoaded = this.loadedChunks.has(adjacentChunkKey);
+                            
+                            console.log(`Chunk adiacente: (${adjacentChunkX}, ${adjacentChunkY}, ${adjacentChunkZ}) nella Regione (${adjacentRegionX}, ${adjacentRegionY}, ${adjacentRegionZ}) - Caricato: ${isLoaded}`);
                         }
                     }
-                }
-            }
-            
-            // Nuova funzione per stampare lo stato di caricamento di un chunk
-            printChunkStatus(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                if (this.loadedChunks.has(chunkKey)) {
-                    console.log(`Chunk (${chunkX}, ${chunkY}, ${chunkZ}) nella Regione (${regionX}, ${regionY}, ${regionZ}) è caricato.`);
-                } else {
-                    console.log(`Chunk (${chunkX}, ${chunkY}, ${chunkZ}) nella Regione (${regionX}, ${regionY}, ${regionZ}) non è caricato.`);
                 }
             }
         }
@@ -242,10 +236,6 @@
 
                 if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
                     this.sceneManager.printChunkAndRegionInfo(playerPosition);
-                    
-                    // Esempio di utilizzo della nuova funzione di debug
-                    this.sceneManager.printChunkStatus(currentRegionX, currentRegionY, currentRegionZ, currentChunkX, currentChunkY, currentChunkZ);
-                    
                     this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
                 }
             }
