@@ -120,7 +120,7 @@
                     this.loadedRegions.add(regionKey); // Regione considerata caricata dopo il fetch
                     this.regionsData.set(regionKey, buffer); // Memorizza il buffer della regione
                     
-                    for (let chunkX = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                    for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkY++) {
                         for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
                             for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
                                 const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
