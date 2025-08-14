@@ -194,11 +194,11 @@
                                 const mesh = new BABYLON.Mesh(meshName, this.scene);
                                 const vertexData = new BABYLON.VertexData();
                                 
-                                Object.assign(vertexData, meshData);
+                                //Object.assign(vertexData, meshData);
 
                                 vertexData.positions = meshData.positions;
                                 vertexData.indices = meshData.indices;
-                                vertexData.colors = meshData.colors;
+                                //vertexData.colors = meshData.colors;
 
                                 // Ricalcola le normali basandosi sulle posizioni dei vertici.
                                 // Il parametro `true` indica di sovrascrivere le normali esistenti.
