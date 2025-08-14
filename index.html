@@ -197,6 +197,7 @@
                 this.engine = new BABYLON.Engine(this.canvas, true);
                 this.scene = new BABYLON.Scene(this.engine);
                 this.sceneManager = new SceneManager(this.scene, this.engine, this.canvas);
+                this.player = this.scene.activeCamera;
             }
 
             start() {
