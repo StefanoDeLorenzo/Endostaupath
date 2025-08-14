@@ -208,11 +208,12 @@
 
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
+                    this.checkCameraPosition();
                 });
 
                 window.addEventListener("resize", () => {
                     this.engine.resize();
-                    this.checkCameraPosition();
+                    
                 });
             }
 
