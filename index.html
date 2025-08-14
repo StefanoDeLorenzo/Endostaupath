@@ -204,7 +204,7 @@
                 this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
                 this.sceneManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
-                this.sceneManager.printChunkAndRegionInfo(this.player.position);
+                
 
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
@@ -212,7 +212,25 @@
 
                 window.addEventListener("resize", () => {
                     this.engine.resize();
+                    this.checkCameraPosition();
                 });
+            }
+
+            checkCameraPosition() {
+                const playerPosition = this.player.position;
+                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
+
+                const currentChunkX = Math.floor((playerPosition.x - currentRegionX * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+
+                // Controllo se il chunk attuale è diverso dall'ultimo chunk registrato
+                if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
+                    this.sceneManager.printChunkAndRegionInfo(playerPosition);
+                    this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
+                }
             }
         }
         
