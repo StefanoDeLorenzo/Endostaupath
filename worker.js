@@ -41,12 +41,12 @@ const VoxelOpacity = {
 };
 
 const cubeFaceData = [
-    { positions: [1,1,1, 1,1,-1, 1,-1,-1, 1,-1,1], normals: [1,0,0, 1,0,0, 1,0,0, 1,0,0], indices: [0,1,2, 0,2,3], isBackFace: false },
-    { positions: [-1,1,-1, -1,1,1, -1,-1,1, -1,-1,-1], normals: [-1,0,0, -1,0,0, -1,0,0, -1,0,0], indices: [0,1,2, 0,2,3], isBackFace: false },
-    { positions: [-1,1,-1, 1,1,-1, 1,1,1, -1,1,1], normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0], indices: [0,1,2, 0,2,3], isBackFace: false },
-    { positions: [-1,-1,1, 1,-1,1, 1,-1,-1, -1,-1,-1], normals: [0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0], indices: [0,1,2, 0,2,3], isBackFace: false },
-    { positions: [-1,1,1, 1,1,1, 1,-1,1, -1,-1,1], normals: [0,0,1, 0,0,1, 0,0,1, 0,0,1], indices: [0,1,2, 0,2,3], isBackFace: false },
-    { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], indices: [0,1,2, 0,2,3], isBackFace: false }
+    { positions: [1,1,1, 1,1,-1, 1,-1,-1, 1,-1,1], normals: [1,0,0, 1,0,0, 1,0,0, 1,0,0], uvs: [1, 1, 0, 1, 0, 0, 1, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,-1, -1,1,1, -1,-1,1, -1,-1,-1], normals: [-1,0,0, -1,0,0, -1,0,0, -1,0,0], uvs: [1, 1, 0, 1, 0, 0, 1, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,-1, 1,1,-1, 1,1,1, -1,1,1], normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0], uvs: [0, 1, 1, 1, 1, 0, 0, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,-1,1, 1,-1,1, 1,-1,-1, -1,-1,-1], normals: [0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0], uvs: [0, 0, 1, 0, 1, 1, 0, 1], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,1, 1,1,1, 1,-1,1, -1,-1,1], normals: [0,0,1, 0,0,1, 0,0,1, 0,0,1], uvs: [0, 1, 1, 1, 1, 0, 0, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], uvs: [0, 1, 1, 1, 1, 0, 0, 0], indices: [0,1,2, 0,2,3], isBackFace: false }
 ];
 
 // # Funzione di Meshing Voxel per Voxel
@@ -144,7 +144,8 @@ function generateMeshForChunk_Voxel(chunkData) {
             positions: new Float32Array(meshDataByVoxelType[voxelType].positions),
             normals: new Float32Array(meshDataByVoxelType[voxelType].normals),
             indices: new Uint16Array(meshDataByVoxelType[voxelType].indices),
-            colors: new Float32Array(meshDataByVoxelType[voxelType].colors)
+            colors: new Float32Array(meshDataByVoxelType[voxelType].colors),
+            uvs: new Float32Array(meshDataByVoxelType[voxelType].uvs)
         };
     }
 
