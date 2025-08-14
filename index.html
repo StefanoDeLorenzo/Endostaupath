@@ -208,6 +208,12 @@
                                 vertexData.normals = meshData.normals;
                                 vertexData.uvs = meshData.uvs; // Aggiungi questa riga
                                 
+                                BABYLON.VertexData.ComputeTangents(
+                                    vertexData.positions,
+                                    vertexData.indices,
+                                    vertexData.normals,
+                                    vertexData.uvs
+                                ); // Calcola le tangenti per il materiale
 
                                 // Ricalcola le normali basandosi sulle posizioni dei vertici.
                                 // Il parametro `true` indica di sovrascrivere le normali esistenti.
