@@ -90,12 +90,15 @@
                     if (Number(voxelType) === 3) {
                         console.log("Creazione bumpmapping per il materiale di Erba");
                         
-                        // Per il bump mapping, usiamo la proprietà 'bumpTexture' del StandardMaterial
-                        material.bumpTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
-                        material.bumpTexture.level = 1; // Puoi regolare l'intensità qui
 
-                        material.bumpTexture.uScale = 10.0;
-                        material.bumpTexture.vScale = 10.0;
+                        material.useVertexColors = false;
+                        // Per il bump mapping, usiamo la proprietà 'bumpTexture' del StandardMaterial
+                        // Applica una texture di base. L'immagine di esempio è verde, che si adatta all'erba.
+                        material.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/grass.jpg", this.scene);
+                        
+                        // Puoi scalare la texture se necessario, proprio come con la bump map
+                        material.diffuseTexture.uScale = 10.0;
+                        material.diffuseTexture.vScale = 10.0;
 
                         // Nota: Le proprietà detailTexture, detailMap.bumpLevel ecc... 
                         // non sono disponibili per lo StandardMaterial.
