@@ -88,10 +88,11 @@
                     if (Number(voxelType) === 3) {
                         console.log("Creazione bumpmapping per il materiale di Erba voxelType:", voxelType);
                         material.useVertexColors = false;
-                        material.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.2);
+                        //material.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.2);
                         material.diffuseTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/wood.jpg", this.scene);
                         // ./texture/map_grass_thiny.png
                         // https://www.babylonjs-playground.com/textures/floor_bump.png
+                        /*
                         material.bumpTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
                         material.detailTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
                         material.detailTexture.uScale = 5.0; // Scala la texture per adattarla meglio al cubo
@@ -103,6 +104,7 @@
                         
                         material.bumpTexture.level = 1;
                         material.detailMap.roughnessBlendLevel = 0.5;
+                        */
                     }
 
                     if (isTransparent) {
