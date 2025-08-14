@@ -87,6 +87,9 @@
                     // Se il voxel è erba, applica la bump map
                     if (Number(voxelType) === 3) {
                         console.log("Creazione bumpmapping per il materiale di Erba voxelType:", voxelType);
+                        material.useVertexColors = false;
+                        boxMaterial.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.2);
+
                         // ./texture/map_grass_thiny.png
                         // https://www.babylonjs-playground.com/textures/floor_bump.png
                         material.bumpTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
