@@ -59,8 +59,13 @@
             }
             
             createSunLight() {
-                const sun = new BABYLON.PointLight("sun", new BABYLON.Vector3(60, 250, 60), this.scene);
+                //const sun = new BABYLON.PointLight("sun", new BABYLON.Vector3(60, 250, 60), this.scene);
+                const sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-0.5, -1, 0.25), this.scene);
                 sun.intensity = 0.7;
+
+                // La posizione serve solo per il ShadowGenerator, non per l'illuminazione
+                sun.position = new BABYLON.Vector3(600, 600, 600);
+
                 sun.shadowMinZ = 10;
                 sun.shadowMaxZ = 300;
                 
