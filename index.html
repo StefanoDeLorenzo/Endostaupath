@@ -204,22 +204,25 @@
 
                                 vertexData.positions = meshData.positions;
                                 vertexData.indices = meshData.indices;
-                                //vertexData.colors = meshData.colors;
+                                vertexData.colors = meshData.colors;
+                                vertexData.normals = meshData.normals;
+                                vertexData.uvs = meshData.uvs; // Aggiungi questa riga
+                                
 
                                 // Ricalcola le normali basandosi sulle posizioni dei vertici.
                                 // Il parametro `true` indica di sovrascrivere le normali esistenti.
                                 // Se funzione devo rimuovere da worker.js la riga che calcola le normali
                                 // perchè altrimenti si calcolano due volte.
                                 // Crea un array per le normali
-                                const normals = [];
+                                //const normals = [];
                                 
                                 // Chiama il metodo statico computeNormals della classe
                                 // e passagli i dati della mesh
-                                BABYLON.VertexData.ComputeNormals(
-                                    vertexData.positions,
-                                    vertexData.indices,
-                                    normals
-                                ); 
+                                //BABYLON.VertexData.ComputeNormals(
+                                //    vertexData.positions,
+                                //    vertexData.indices,
+                                //    normals
+                                //); 
                                 
                                 // Aggiungi le normali calcolate all'oggetto vertexData
                                 vertexData.normals = normals;

@@ -60,6 +60,7 @@ function generateMeshForChunk_Voxel(chunkData) {
                 normals: [],
                 indices: [],
                 colors: [],
+                uvs: [], // UVs per le texture
                 indexOffset: 0
             };
         }
@@ -130,6 +131,7 @@ function generateMeshForChunk_Voxel(chunkData) {
                         for (let i = 0; i < 4; i++) {
                              currentMeshData.colors.push(...voxelColor);
                         }
+                        currentMeshData.uvs.push(...faceData.uvs);
                     }
                 });
             }
