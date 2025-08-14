@@ -231,9 +231,12 @@
             }
             
             async loadMissingChunks(chunksToLoad) {
+                const loadingPromises = [];
                 for (const chunk of chunksToLoad) {
-                    await this.loadChunk(chunk.regionX, chunk.regionY, chunk.regionZ, chunk.chunkX, chunk.chunkY, chunk.chunkZ);
+                    // Avvia la chiamata ma non aspetta la risposta
+                    loadingPromises.push(this.loadChunk(chunk.regionX, chunk.regionY, chunk.regionZ, chunk.chunkX, chunk.chunkY, chunk.chunkZ));
                 }
+                await Promise.all(loadingPromises); // Aspetta che tutte le promesse siano risolte
             }
             
             printDebugInfo(playerPosition, chunksToLoad) {
