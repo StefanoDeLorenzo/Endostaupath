@@ -49,7 +49,7 @@ const cubeFaceData = [
     { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], indices: [0,1,2, 0,2,3], isBackFace: false }
 ];
 
-// # Funzione di Meshing Voxel per Voxel (CORRETTA)
+// # Funzione di Meshing Voxel per Voxel
 function generateMeshForChunk_Voxel(chunkData) {
     const meshDataByVoxelType = {};
 

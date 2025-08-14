@@ -119,3 +119,45 @@ Diagramma del Flusso
     player.update() a sua volta interagisce con la fisica, controlla gli input tramite InputManager e aggiorna la posizione del giocatore.
 
     La classe Game chiama render(), e la scena viene disegnata.
+
+
+    Assolutamente, ecco un riassunto della tecnica che abbiamo discusso per gestire più tipi di voxel e i loro orientamenti usando un singolo byte.
+
+### 🧠 Bitmasking per Voxel - per aumentare il numero di tipi di voxel
+
+Il **bitmasking** è una tecnica efficiente che ti permette di codificare più informazioni (come il tipo di voxel e il suo orientamento) in un unico numero binario, in questo caso, un singolo byte.
+
+Un byte è composto da **8 bit**. Invece di usare tutti e 8 i bit per il tipo di voxel (che ti darebbe 256 tipi), puoi dividerli e assegnare a ogni gruppo un'informazione specifica.
+
+---
+
+### ⚙️ Come funziona la codifica
+
+Immaginiamo di voler supportare:
+* **Tipi di voxel**: Fino a **64 tipi unici** (come terra, roccia, erba, ecc.). Questo richiede **6 bit** (`2^6 = 64`).
+* **Orientamenti**: Fino a **4 orientamenti** per ogni voxel. Questo richiede **2 bit** (`2^2 = 4`).
+
+La formula per combinare queste due informazioni in un singolo valore (`0-255`) è:
+
+`valore_codificato = (tipo_di_voxel << 2) | orientamento`
+
+* `<< 2` sposta i bit del tipo di voxel a sinistra di 2 posizioni, per fare spazio ai bit dell'orientamento.
+* `|` (OR bit a bit) unisce il tipo di voxel spostato con i bit dell'orientamento.
+
+Questo valore codificato è quello che verrebbe salvato nel tuo file `.voxl`.
+
+---
+
+### 🛠️ Come funziona la decodifica (nel `worker.js`)
+
+Quando il tuo `worker.js` legge il valore dal file del chunk, deve eseguire l'operazione inversa per estrarre il tipo di voxel e l'orientamento.
+
+1.  **Estrazione del Tipo di Voxel**:
+    -   `tipo_di_voxel = valore_codificato >> 2`
+    -   L'operatore `>>` (shift a destra) sposta i bit a destra, scartando i 2 bit dell'orientamento e lasciando solo i 6 bit del tipo di voxel.
+
+2.  **Estrazione dell'Orientamento**:
+    -   `orientamento = valore_codificato & 3`
+    -   L'operatore `&` (AND bit a bit) con la "maschera" `3` (che in binario è `0b00000011`) isola i 2 bit dell'orientamento e ignora il resto.
+
+In questo modo, il tuo `worker.js` avrà le due informazioni separate per generare la mesh corretta per quel voxel.

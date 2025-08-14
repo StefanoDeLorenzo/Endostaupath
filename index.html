@@ -145,6 +145,50 @@
                     console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
                 }
             }
+
+            // Nuovo metodo corretto per stampare la posizione della camera e dei chunk adiacenti
+            printChunkAndRegionInfo(playerPosition) {
+                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
+
+                const currentChunkX = Math.floor((playerPosition.x - currentRegionX * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+
+                console.log("-----------------------------------------");
+                console.log(`Posizione Camera: X: ${playerPosition.x}, Y: ${playerPosition.y}, Z: ${playerPosition.z}`);
+                console.log(`Regione Attuale: (${currentRegionX}, ${currentRegionY}, ${currentRegionZ})`);
+                console.log(`Chunk Attuale: (${currentChunkX}, ${currentChunkY}, ${currentChunkZ})`);
+                console.log("-----------------------------------------");
+                console.log("Chunk adiacenti (e le loro regioni):");
+                
+                for (let x = -1; x <= 1; x++) {
+                    for (let y = -1; y <= 1; y++) {
+                        for (let z = -1; z <= 1; z++) {
+                            // Ignora il chunk centrale (quello della camera)
+                            if (x === 0 && y === 0 && z === 0) {
+                                continue;
+                            }
+                            
+                            const worldChunkX = currentChunkX + x;
+                            const worldChunkY = currentChunkY + y;
+                            const worldChunkZ = currentChunkZ + z;
+                            
+                            // Calcola la regione e il chunk corretto per l'adiacente
+                            const adjacentRegionX = currentRegionX + Math.floor(worldChunkX / REGION_DIMENSION);
+                            const adjacentRegionY = currentRegionY + Math.floor(worldChunkY / REGION_DIMENSION);
+                            const adjacentRegionZ = currentRegionZ + Math.floor(worldChunkZ / REGION_DIMENSION);
+
+                            const adjacentChunkX = (worldChunkX % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            const adjacentChunkY = (worldChunkY % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            const adjacentChunkZ = (worldChunkZ % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+
+                            console.log(`Chunk adiacente: (${adjacentChunkX}, ${adjacentChunkY}, ${adjacentChunkZ}) nella Regione (${adjacentRegionX}, ${adjacentRegionY}, ${adjacentRegionZ})`);
+                        }
+                    }
+                }
+            }
         }
 
         class Game {
@@ -158,6 +202,8 @@
             start() {
                 this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
                 this.sceneManager.loadRegionAndMeshAllChunks(1, 0, 0);
+
+                this.sceneManager.printChunkAndRegionInfo(this.player.position);
 
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
