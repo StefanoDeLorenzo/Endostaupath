@@ -108,15 +108,6 @@
                         // Abilita il bump mapping
                         material.useParallax = true;
                         
-                        // Configurazione per provare a smussare gli spigoli
-                        material.emissiveColor = new BABYLON.Color3(0.1, 0.1, 0.1); // Colore di base
-                        material.fresnelParameters = new BABYLON.FresnelParameters();
-                        material.fresnelParameters.isEnabled = true;
-                        material.fresnelParameters.leftColor = new BABYLON.Color3(0, 0, 0); // Colore interno
-                        material.fresnelParameters.rightColor = new BABYLON.Color3(0.8, 0.8, 0.8); // Colore degli spigoli
-                        material.fresnelParameters.power = 2; // Rende l'effetto più marcato
-                        material.fresnelParameters.bias = 0.1; // Controlla la larghezza dell'effetto
-
                         // Nota: Le proprietà detailTexture, detailMap.bumpLevel ecc... 
                         // non sono disponibili per lo StandardMaterial.
                         // Le ho rimosse per evitare errori e confusione.
