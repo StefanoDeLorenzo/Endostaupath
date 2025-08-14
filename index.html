@@ -31,6 +31,8 @@
                 this.workers = new Map();
                 this.sceneMaterials = {};
                 this.loadedChunks = new Set();
+                this.loadedRegions = new Set();
+                this.regionsData = new Map(); // Mappa per memorizzare i dati delle regioni
                 this.initializeScene();
             }
 
@@ -69,7 +71,8 @@
                 }
                 return this.sceneMaterials[voxelType];
             }
-
+            
+            // Metodo per estrarre i dati di un chunk da un buffer della regione
             getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
                 const dataView = new DataView(buffer);
                 const headerSize = 11;
@@ -84,8 +87,24 @@
                 const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
                 return new Uint8Array(chunkBuffer);
             }
+            
+            // Nuovo metodo per ottenere i dati di un chunk da una regione già in memoria
+            getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
+                const regionKey = `${regionX}_${regionY}_${regionZ}`;
+                if (!this.regionsData.has(regionKey)) {
+                    return null;
+                }
+                const regionBuffer = this.regionsData.get(regionKey);
+                return this.getChunkDataFromRegionBuffer(regionBuffer, chunkX, chunkY, chunkZ);
+            }
 
             async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
+                const regionKey = `${regionX}_${regionY}_${regionZ}`;
+                if (this.loadedRegions.has(regionKey)) {
+                    console.log(`Regione (${regionX}, ${regionY}, ${regionZ}) già caricata. Saltato il caricamento.`);
+                    return;
+                }
+                
                 try {
                     const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
                     console.log(`Thread principale: Caricamento del file ${regionPath}...`);
@@ -98,7 +117,10 @@
                     const buffer = await response.arrayBuffer();
                     console.log(`Thread principale: File caricato. Dimensione: ${buffer.byteLength} byte.`);
                     
-                    for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                    this.loadedRegions.add(regionKey); // Regione considerata caricata dopo il fetch
+                    this.regionsData.set(regionKey, buffer); // Memorizza il buffer della regione
+                    
+                    for (let chunkX = 0; chunkY < REGION_DIMENSION; chunkY++) {
                         for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
                             for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
                                 const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
@@ -114,10 +136,11 @@
                                 const worker = new Worker('worker.js');
                                 this.workers.set(workerId, worker);
                                 
-                                this.loadedChunks.add(chunkKey);
-
                                 worker.onmessage = (event) => {
                                     const { type, meshDataByVoxelType, voxelOpacity } = event.data;
+                                    
+                                    this.loadedChunks.add(chunkKey);
+                                    
                                     if (type === 'meshGenerated' && meshDataByVoxelType) {
                                         const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
                                         const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
@@ -135,7 +158,6 @@
                                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                             }
-                                            
                                         }
                                         worker.terminate();
                                         this.workers.delete(workerId);
@@ -166,7 +188,8 @@
 
                 console.log("-----------------------------------------");
                 console.log(`Posizione Camera: X: ${playerPosition.x}, Y: ${playerPosition.y}, Z: ${playerPosition.z}`);
-                console.log(`Regione Attuale: (${currentRegionX}, ${currentRegionY}, ${currentRegionZ})`);
+                const currentRegionKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}`;
+                console.log(`Regione Attuale: (${currentRegionX}, ${currentRegionY}, ${currentRegionZ}) - Caricata: ${this.loadedRegions.has(currentRegionKey)}`);
                 const currentChunkKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}_${currentChunkX}_${currentChunkY}_${currentChunkZ}`;
                 console.log(`Chunk Attuale: (${currentChunkX}, ${currentChunkY}, ${currentChunkZ}) - Caricato: ${this.loadedChunks.has(currentChunkKey)}`);
                 console.log("-----------------------------------------");
