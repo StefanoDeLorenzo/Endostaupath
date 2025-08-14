@@ -45,7 +45,8 @@
 
             createCamera() {
                 const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, 60), this.scene);
-                camera.setTarget(new BABYLON.Vector3(60, 0, 60)); 
+                camera.setTarget(new BABYLON.Vector3(60, 0, 60));
+                camera.inertia = 0.5;
                 camera.attachControl(this.canvas, true);
                 camera.keysUp.push(87);    // W
                 camera.keysDown.push(83);  // S
