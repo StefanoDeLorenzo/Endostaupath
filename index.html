@@ -85,11 +85,11 @@
                     material.useVertexColors = true;
 
                     // Se il voxel è erba, applica la bump map
-                    if (voxelType === 3) {
+                    if (Number(voxelType) === 3) {
                         console.log("Creazione bumpmapping per il materiale di Erba voxelType:", voxelType);
                         // ./texture/map_grass_thiny.png
                         // https://www.babylonjs-playground.com/textures/floor_bump.png
-                        material.bumpTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
+                        // material.bumpTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
                         material.detailTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
                         material.detailTexture.uScale = 5.0; // Scala la texture per adattarla meglio al cubo
                         material.detailTexture.vScale = 5.0;
