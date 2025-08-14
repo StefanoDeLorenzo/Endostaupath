@@ -79,32 +79,24 @@
             }
 
             getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
-                console.log("Creazione materiale per il voxelType:", voxelType);
+                console.log("Creazione materiale per il voxelType:", voxelType, "Tipo:", typeof voxelType);
                 if (!this.sceneMaterials[voxelType]) {
                     const material = new BABYLON.StandardMaterial(`material_${voxelType}`, this.scene);
+
+                    // Imposta i colori dei vertici per tutti i materiali come da progetto originale
                     material.useVertexColors = true;
 
-                    // Se il voxel è erba, applica la bump map
+                    // Se il voxel è l'erba, applichiamo una bump map
                     if (Number(voxelType) === 3) {
-                        console.log("Creazione bumpmapping per il materiale di Erba voxelType:", voxelType);
-                        material.useVertexColors = false;
-                        //material.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.2);
-                        material.diffuseTexture = new BABYLON.Texture("./texture/map_grass_thiny.png", this.scene);
-                        // ./texture/map_grass_thiny.png
-                        // https://www.babylonjs-playground.com/textures/floor_bump.png
-                        /*
+                        console.log("Creazione bumpmapping per il materiale di Erba");
+                        
+                        // Per il bump mapping, usiamo la proprietà 'bumpTexture' del StandardMaterial
                         material.bumpTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
-                        material.detailTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/floor_bump.png", this.scene);
-                        material.detailTexture.uScale = 5.0; // Scala la texture per adattarla meglio al cubo
-                        material.detailTexture.vScale = 5.0;
-                        
-                        material.detailMap.isEnabled = true;
-                        material.detailMap.diffuseBlendLevel = 0.1;
-                        material.detailMap.bumpLevel = 1;
-                        
-                        material.bumpTexture.level = 1;
-                        material.detailMap.roughnessBlendLevel = 0.5;
-                        */
+                        material.bumpTexture.level = 0.5; // Puoi regolare l'intensità qui
+
+                        // Nota: Le proprietà detailTexture, detailMap.bumpLevel ecc... 
+                        // non sono disponibili per lo StandardMaterial.
+                        // Le ho rimosse per evitare errori e confusione.
                     }
 
                     if (isTransparent) {
