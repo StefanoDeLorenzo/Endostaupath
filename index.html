@@ -194,10 +194,7 @@
                                 const mesh = new BABYLON.Mesh(meshName, this.scene);
                                 const vertexData = new BABYLON.VertexData();
                                 
-                                // Assegna i dati del vertice alla mesh
-                                // La commento per poter utilizzare i metodi degli oggetti babylon
-                                // Che verosimilmente sono più performanti dei miei.
-                                //Object.assign(vertexData, meshData);
+                                Object.assign(vertexData, meshData);
 
                                 vertexData.positions = meshData.positions;
                                 vertexData.indices = meshData.indices;
@@ -207,7 +204,19 @@
                                 // Il parametro `true` indica di sovrascrivere le normali esistenti.
                                 // Se funzione devo rimuovere da worker.js la riga che calcola le normali
                                 // perchè altrimenti si calcolano due volte.
-                                vertexData.computeNormals(true); 
+                                // Crea un array per le normali
+                                const normals = [];
+                                
+                                // Chiama il metodo statico computeNormals della classe
+                                // e passagli i dati della mesh
+                                BABYLON.VertexData.ComputeNormals(
+                                    vertexData.positions,
+                                    vertexData.indices,
+                                    normals
+                                ); 
+                                
+                                // Aggiungi le normali calcolate all'oggetto vertexData
+                                vertexData.normals = normals;
 
                                 vertexData.applyToMesh(mesh);
                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
