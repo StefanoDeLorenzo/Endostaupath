@@ -132,8 +132,8 @@
                                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
                                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                                this.loadedChunks.add(chunkKey);
                                             }
+                                            this.loadedChunks.add(chunkKey);
                                         }
                                         worker.terminate();
                                         this.workers.delete(workerId);
