@@ -79,24 +79,25 @@
             }
 
             getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
+                console.log("Creazione materiale per il voxelType:", voxelType);
                 if (!this.sceneMaterials[voxelType]) {
                     const material = new BABYLON.StandardMaterial(`material_${voxelType}`, this.scene);
                     material.useVertexColors = true;
 
                     // Se il voxel è erba, applica la bump map
-                if (voxelType === 3) {
-                    material.bumpTexture = new BABYLON.Texture("https://inspiring-douhua-26811a.netlify.app/texture/map_grass_thiny.png", this.scene);
-                    material.detailTexture = new BABYLON.Texture("https://inspiring-douhua-26811a.netlify.app/texture/map_grass_thiny.png", scene);
-                    material.detailTexture.uScale = 5.0; // Scala la texture per adattarla meglio al cubo
-                    material.detailTexture.vScale = 5.0;
-                    
-                    material.detailMap.isEnabled = true;
-                    material.detailMap.diffuseBlendLevel = 0.1;
-                    material.detailMap.bumpLevel = 1;
-                    
-                    boxMaterial.bumpTexture.level = 1;
-                    boxMaterial.detailMap.roughnessBlendLevel = 0.5;
-                }
+                    if (voxelType === 3) {
+                        material.bumpTexture = new BABYLON.Texture("https://inspiring-douhua-26811a.netlify.app/texture/map_grass_thiny.png", this.scene);
+                        material.detailTexture = new BABYLON.Texture("https://inspiring-douhua-26811a.netlify.app/texture/map_grass_thiny.png", scene);
+                        material.detailTexture.uScale = 5.0; // Scala la texture per adattarla meglio al cubo
+                        material.detailTexture.vScale = 5.0;
+                        
+                        material.detailMap.isEnabled = true;
+                        material.detailMap.diffuseBlendLevel = 0.1;
+                        material.detailMap.bumpLevel = 1;
+                        
+                        boxMaterial.bumpTexture.level = 1;
+                        boxMaterial.detailMap.roughnessBlendLevel = 0.5;
+                    }
 
                     if (isTransparent) {
                         material.alpha = materialAlpha;
