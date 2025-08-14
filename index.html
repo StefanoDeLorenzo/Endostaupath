@@ -30,6 +30,7 @@
                 this.canvas = canvas;
                 this.workers = new Map();
                 this.sceneMaterials = {};
+                this.loadedChunks = new Set(); // Nuovo Set per tracciare i chunk caricati
                 this.initializeScene();
             }
 
@@ -100,6 +101,11 @@
                     for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
                         for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
                             for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                                if (this.loadedChunks.has(chunkKey)) {
+                                    continue;
+                                }
+
                                 const chunkData = this.getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ);
                                 if (chunkData === null) {
                                     continue;
@@ -126,6 +132,7 @@
                                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
                                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                                this.loadedChunks.add(chunkKey); // Aggiunge il chunk al set dei caricati
                                             }
                                         }
                                         worker.terminate();
@@ -145,8 +152,7 @@
                     console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
                 }
             }
-
-            // Nuovo metodo corretto per stampare la posizione della camera e dei chunk adiacenti
+            
             printChunkAndRegionInfo(playerPosition) {
                 const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
                 const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
@@ -166,7 +172,6 @@
                 for (let x = -1; x <= 1; x++) {
                     for (let y = -1; y <= 1; y++) {
                         for (let z = -1; z <= 1; z++) {
-                            // Ignora il chunk centrale (quello della camera)
                             if (x === 0 && y === 0 && z === 0) {
                                 continue;
                             }
@@ -175,7 +180,6 @@
                             const worldChunkY = currentChunkY + y;
                             const worldChunkZ = currentChunkZ + z;
                             
-                            // Calcola la regione e il chunk corretto per l'adiacente
                             const adjacentRegionX = currentRegionX + Math.floor(worldChunkX / REGION_DIMENSION);
                             const adjacentRegionY = currentRegionY + Math.floor(worldChunkY / REGION_DIMENSION);
                             const adjacentRegionZ = currentRegionZ + Math.floor(worldChunkZ / REGION_DIMENSION);
@@ -189,6 +193,16 @@
                     }
                 }
             }
+            
+            // Nuova funzione per stampare lo stato di caricamento di un chunk
+            printChunkStatus(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
+                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                if (this.loadedChunks.has(chunkKey)) {
+                    console.log(`Chunk (${chunkX}, ${chunkY}, ${chunkZ}) nella Regione (${regionX}, ${regionY}, ${regionZ}) è caricato.`);
+                } else {
+                    console.log(`Chunk (${chunkX}, ${chunkY}, ${chunkZ}) nella Regione (${regionX}, ${regionY}, ${regionZ}) non è caricato.`);
+                }
+            }
         }
 
         class Game {
@@ -198,14 +212,13 @@
                 this.scene = new BABYLON.Scene(this.engine);
                 this.sceneManager = new SceneManager(this.scene, this.engine, this.canvas);
                 this.player = this.scene.activeCamera;
+                
                 this.lastChunk = { x: null, y: null, z: null };
             }
 
             start() {
                 this.sceneManager.loadRegionAndMeshAllChunks(0, 0, 0);
                 this.sceneManager.loadRegionAndMeshAllChunks(1, 0, 0);
-
-                
 
                 this.engine.runRenderLoop(() => {
                     this.scene.render();
@@ -214,7 +227,6 @@
 
                 window.addEventListener("resize", () => {
                     this.engine.resize();
-                    
                 });
             }
 
@@ -228,9 +240,12 @@
                 const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
                 const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
 
-                // Controllo se il chunk attuale è diverso dall'ultimo chunk registrato
                 if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
                     this.sceneManager.printChunkAndRegionInfo(playerPosition);
+                    
+                    // Esempio di utilizzo della nuova funzione di debug
+                    this.sceneManager.printChunkStatus(currentRegionX, currentRegionY, currentRegionZ, currentChunkX, currentChunkY, currentChunkZ);
+                    
                     this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
                 }
             }
