@@ -178,7 +178,7 @@
                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                 
                                 // Aggiungi la mesh come proiettore di ombre
-                                if (VoxelOpacity[voxelType] === 'opaque') {
+                                if (!isTransparent) {
                                     this.shadowGenerator.addShadowCaster(mesh);
                                     mesh.receiveShadows = true;
                                 }
