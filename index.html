@@ -184,7 +184,12 @@
                                 
                                 // Aggiungi la mesh come proiettore di ombre
                                 if (voxelOpacity[voxelType] === 'opaque') {
-                                    this.shadowGenerator.addShadowCaster(mesh);
+                                    // Questa riga è commentata perchè attivarla richiede molto più memoria
+                                    // e potrebbe causare problemi di performance con molte mesh
+                                    // Una scheda video molto potente non dovrebbe avere problemi
+                                    // ma su schede video più deboli potrebbe causare crash o rallentamenti
+                                    
+                                    //this.shadowGenerator.addShadowCaster(mesh);
                                     mesh.receiveShadows = true;
                                 }
                             }
