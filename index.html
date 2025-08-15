@@ -85,9 +85,7 @@
                 if (!this.sceneMaterials[voxelType]) {
                     const material = new BABYLON.StandardMaterial(`material_${voxelType}`, this.scene);
 
-                    // Imposta i colori dei vertici per tutti i materiali come da progetto originale
-                    material.useVertexColors = false;
-
+                    
                     // Se il voxel è l'erba, applichiamo una bump map
                     if (Number(voxelType) === 3) {
                         console.log("Creazione bumpmapping per il materiale di Erba");
@@ -113,6 +111,10 @@
                         // Nota: Le proprietà detailTexture, detailMap.bumpLevel ecc... 
                         // non sono disponibili per lo StandardMaterial.
                         // Le ho rimosse per evitare errori e confusione.
+                    }else{
+                        // Imposta i colori dei vertici per tutti i materiali come da progetto originale
+                        material.useVertexColors = true;
+
                     }
 
                     if (isTransparent) {
