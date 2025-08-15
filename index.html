@@ -91,15 +91,18 @@
                         console.log("Creazione bumpmapping per il materiale di Erba");
                         
 
-                        material.useVertexColors = false;
+                        material.useVertexColors = true;
                         // Per il bump mapping, usiamo la proprietà 'bumpTexture' del StandardMaterial
                         // Applica una texture di base. L'immagine di esempio è verde, che si adatta all'erba.
-                        material.diffuseTexture = new BABYLON.Texture("./texture/t_grass.png", this.scene);
-                        material.emissiveColor = new BABYLON.Color3(1, 0, 0);
-                        material.specularColor = new BABYLON.Color3(1, 0, 0);
+                        
+                        //material.diffuseTexture = new BABYLON.Texture("./texture/t_grass.png", this.scene);
+
+                        //material.emissiveColor = new BABYLON.Color3(1, 0, 0);
+                        //material.specularColor = new BABYLON.Color3(1, 0, 0);
+                        
                         // Puoi scalare la texture se necessario, proprio come con la bump map
-                        material.diffuseTexture.uScale = 1.0;
-                        material.diffuseTexture.vScale = 1.0;
+                        //material.diffuseTexture.uScale = 1.0;
+                        //material.diffuseTexture.vScale = 1.0;
 
                         material.bumpTexture = new BABYLON.Texture("./texture/m_grass.png", this.scene);
                         material.bumpTexture.level = 0.5;
