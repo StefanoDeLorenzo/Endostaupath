@@ -68,7 +68,7 @@
                 sun.intensity = 0.7;
 
                 // La posizione serve solo per il ShadowGenerator, non per l'illuminazione
-                sun.position = new BABYLON.Vector3(0, 30, 0);
+                sun.position = new BABYLON.Vector3(0, 150, 0);
 
                 sun.shadowMinZ = 10;
                 sun.shadowMaxZ = 50;
@@ -77,7 +77,7 @@
                 shadowGenerator.usePercentageCloserFiltering = true;
                 shadowGenerator.usePoissonSampling = true;
                 shadowGenerator.bias = 0.005;
-                shadowGenerator.normalBias = 0.02;
+                shadowGenerator.normalBias = 0.005;
                 shadowGenerator.blurKernel = 128;
 
                 return shadowGenerator;
