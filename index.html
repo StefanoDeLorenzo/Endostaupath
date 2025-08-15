@@ -68,10 +68,10 @@
                 sun.intensity = 0.7;
 
                 // La posizione serve solo per il ShadowGenerator, non per l'illuminazione
-                sun.position = new BABYLON.Vector3(0, 50, 0);
+                sun.position = new BABYLON.Vector3(0, 30, 0);
 
                 sun.shadowMinZ = 10;
-                sun.shadowMaxZ = 100;
+                sun.shadowMaxZ = 50;
                 
                 const shadowGenerator = new BABYLON.ShadowGenerator(2048, sun);
                 shadowGenerator.usePercentageCloserFiltering = true;
