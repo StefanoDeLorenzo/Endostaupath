@@ -57,7 +57,9 @@
             
             createAmbientLight() {
                 const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), this.scene);
-                light.intensity = 0.3;
+                light.intensity = 0.3; // L'intensità va bene
+                light.diffuse = new BABYLON.Color3(0.8, 0.8, 0.8); // Luce non troppo brillante
+                light.groundColor = new BABYLON.Color3(0.5, 0.5, 0.5); // ✨ Aggiungi un colore per schiarire le ombre ✨
             }
             
             createSunLight() {
