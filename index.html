@@ -76,7 +76,8 @@
                 const shadowGenerator = new BABYLON.ShadowGenerator(2048, sun);
                 shadowGenerator.usePercentageCloserFiltering = true;
                 shadowGenerator.usePoissonSampling = true;
-                shadowGenerator.bias = 0.02;
+                shadowGenerator.bias = 0.005;
+                shadowGenerator.normalBias = 0.02;
                 shadowGenerator.blurKernel = 128;
 
                 return shadowGenerator;
