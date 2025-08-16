@@ -196,4 +196,183 @@ class WorldGenerator {
         }
       }
     }
-    return n
+    return new VoxelChunk30(chunkType, a);
+  }
+
+  getOrCreateChunk(RX,RY,RZ, CX,CY,CZ){
+    const k = this.key(RX,RY,RZ, CX,CY,CZ);
+    if (this.cache.has(k)) return this.cache.get(k);
+    const t = this.determineChunkType(RX,RY,RZ, CX,CY,CZ);
+    const c = this.generateLogicalChunk(RX,RY,RZ, CX,CY,CZ, t);
+    this.cache.set(k, c);
+    return c;
+  }
+}
+
+//// =====================
+// MASCHERE "CATEGORIA DEL VICINO" (3 bit) — NIENTE regole di rendering qui
+//// =====================
+
+// scrive un valore [0..7] in 3 bit nello stream
+function write3Bits(bufU8, bitIndex, value){
+  let v = value & 0b111;
+  for (let i=0; i<3; i++){
+    const b = (v >> i) & 1;
+    const byteIndex = (bitIndex + i) >> 3;
+    const bit = (bitIndex + i) & 7;
+    if (b) bufU8[byteIndex] |= (1 << bit);
+    else   bufU8[byteIndex] &= ~(1 << bit);
+  }
+}
+
+// risolve categoria del voxel (self o vicino) dato (chunkType, value)
+function catOf(chunkType, voxelValue){
+  return categoryFromValue(chunkType, voxelValue);
+}
+
+// calcola le 6 facce; per ogni cella scrive la **CATEGORIA del vicino** in 3 bit
+function buildNeighborCategoryMasks(gen, RX,RY,RZ, CX,CY,CZ, localChunk){
+  const mask = new Uint8Array(MASK_BYTES);
+  let bitPtr = 0;
+
+  function neighborCat(dirX,dirY,dirZ, x,y,z){
+    // spostati “fuori” di 1 unità
+    let nRX = RX, nRY = RY, nRZ = RZ;
+    let nCX = CX, nCY = CY, nCZ = CZ;
+    let nx = x + dirX, ny = y + dirY, nz = z + dirZ;
+
+    if (nx < 0)               { nCX--; nx = CHUNK_SIZE-1; }
+    else if (nx >= CHUNK_SIZE){ nCX++; nx = 0; }
+    if (ny < 0)               { nCY--; ny = CHUNK_SIZE-1; }
+    else if (ny >= CHUNK_SIZE){ nCY++; ny = 0; }
+    if (nz < 0)               { nCZ--; nz = CHUNK_SIZE-1; }
+    else if (nz >= CHUNK_SIZE){ nCZ++; nz = 0; }
+
+    if (nCX < 0)                 { nRX--; nCX = REGION_DIM-1; }
+    else if (nCX >= REGION_DIM)  { nRX++; nCX = 0; }
+    if (nCY < 0)                 { nRY--; nCY = REGION_DIM-1; }
+    else if (nCY >= REGION_DIM)  { nRY++; nCY = 0; }
+    if (nCZ < 0)                 { nRZ--; nCZ = REGION_DIM-1; }
+    else if (nCZ >= REGION_DIM)  { nRZ++; nCZ = 0; }
+
+    const neigh = gen.getOrCreateChunk(nRX,nRY,nRZ, nCX,nCY,nCZ);
+    const v = neigh.get(nx,ny,nz);
+    return catOf(neigh.chunkType, v); // categoria del VICINO, codificata 0..7
+  }
+
+  // +X (x=29): scrivi 900 celle (y,z)
+  for (let y=0; y<CHUNK_SIZE; y++){
+    for (let z=0; z<CHUNK_SIZE; z++){
+      const catN = neighborCat(+1,0,0, CHUNK_SIZE-1, y, z);
+      write3Bits(mask, bitPtr, catN); bitPtr += 3;
+    }
+  }
+  // -X (x=0)
+  for (let y=0; y<CHUNK_SIZE; y++){
+    for (let z=0; z<CHUNK_SIZE; z++){
+      const catN = neighborCat(-1,0,0, 0, y, z);
+      write3Bits(mask, bitPtr, catN); bitPtr += 3;
+    }
+  }
+  // +Y (y=29)
+  for (let x=0; x<CHUNK_SIZE; x++){
+    for (let z=0; z<CHUNK_SIZE; z++){
+      const catN = neighborCat(0,+1,0, x, CHUNK_SIZE-1, z);
+      write3Bits(mask, bitPtr, catN); bitPtr += 3;
+    }
+  }
+  // -Y (y=0)
+  for (let x=0; x<CHUNK_SIZE; x++){
+    for (let z=0; z<CHUNK_SIZE; z++){
+      const catN = neighborCat(0,-1,0, x, 0, z);
+      write3Bits(mask, bitPtr, catN); bitPtr += 3;
+    }
+  }
+  // +Z (z=29)
+  for (let x=0; x<CHUNK_SIZE; x++){
+    for (let y=0; y<CHUNK_SIZE; y++){
+      const catN = neighborCat(0,0,+1, x, y, CHUNK_SIZE-1);
+      write3Bits(mask, bitPtr, catN); bitPtr += 3;
+    }
+  }
+  // -Z (z=0)
+  for (let x=0; x<CHUNK_SIZE; x++){
+    for (let y=0; y<CHUNK_SIZE; y++){
+      const catN = neighborCat(0,0,-1, x, y, 0);
+      write3Bits(mask, bitPtr, catN); bitPtr += 3;
+    }
+  }
+
+  return mask; // 2025 byte
+}
+
+//// =====================
+// SCRITTURA FILE REGIONE (v4)
+//// =====================
+function writeRegionFile(gen, RX,RY,RZ){
+  const chunks = [];
+  const types  = [];
+  const masks  = []; // Uint8Array(2025)
+
+  for (let CX=0; CX<REGION_DIM; CX++){
+    for (let CY=0; CY<REGION_DIM; CY++){
+      for (let CZ=0; CZ<REGION_DIM; CZ++){
+        const ch   = gen.getOrCreateChunk(RX,RY,RZ, CX,CY,CZ);
+        const mcat = buildNeighborCategoryMasks(gen, RX,RY,RZ, CX,CY,CZ, ch);
+        chunks.push(ch);
+        types.push(ch.chunkType);
+        masks.push(mcat);
+      }
+    }
+  }
+
+  const totalFileSize = CHUNK_DATA_OFFSET + TOTAL_CHUNKS * CHUNK_RECORD_SIZE;
+  const buffer = new ArrayBuffer(totalFileSize);
+  const view = new DataView(buffer);
+
+  // Header
+  view.setUint32(0, 0x564F584C, false); // 'VOXL'
+  view.setUint8(4, CONFIG.FILE.VERSION); // 4
+  view.setUint8(5, CHUNK_SIZE);
+  view.setUint8(6, CHUNK_SIZE);
+  view.setUint8(7, CHUNK_SIZE);
+  view.setUint8(8, 0); view.setUint8(9, 0); view.setUint8(10, TOTAL_CHUNKS); // 64
+
+  // Index table
+  const idx = new Uint8Array(buffer, FILE_HEADER_SIZE, INDEX_TABLE_SIZE);
+  let off = CHUNK_DATA_OFFSET;
+  for (let i=0; i<TOTAL_CHUNKS; i++){
+    idx[i*5+0] = (off >> 16) & 0xFF;
+    idx[i*5+1] = (off >> 8)  & 0xFF;
+    idx[i*5+2] = (off)       & 0xFF;
+    idx[i*5+3] = (CHUNK_RECORD_SIZE >> 8) & 0xFF;
+    idx[i*5+4] = (CHUNK_RECORD_SIZE)      & 0xFF;
+    off += CHUNK_RECORD_SIZE;
+  }
+
+  // Dati per chunk: [1B chunkType][27000 voxel][2025 bytes categorie-neighbor]
+  let ptr = CHUNK_DATA_OFFSET;
+  for (let i=0; i<TOTAL_CHUNKS; i++){
+    new Uint8Array(buffer, ptr, 1)[0] = types[i]; ptr += 1;
+    new Uint8Array(buffer, ptr, BYTES_30CUBE).set(chunks[i].data); ptr += BYTES_30CUBE;
+    new Uint8Array(buffer, ptr, MASK_BYTES).set(masks[i]); ptr += MASK_BYTES;
+  }
+
+  return buffer;
+}
+
+//// =====================
+// WORLD GENERATOR
+//// =====================
+const gen = new WorldGenerator();
+
+self.onmessage = (ev) => {
+  const { type, regionX, regionY, regionZ } = ev.data || {};
+  if (type !== 'generateRegion') return;
+  try {
+    const buf = writeRegionFile(gen, regionX, regionY, regionZ);
+    self.postMessage({ type:'regionGenerated', regionX, regionY, regionZ, buffer: buf }, [buf]);
+  } catch (e) {
+    self.postMessage({ type:'error', message: e?.message || 'unknown error', regionX, regionY, regionZ });
+  }
+};
