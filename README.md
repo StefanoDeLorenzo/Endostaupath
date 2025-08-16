@@ -1,5 +1,9 @@
 # Endostaupath
 
+# paged hosted in:
+https://app.netlify.com/projects/inspiring-douhua-26811a/deploys
+
+
 Per far riflettere le superfici:
 si può usare una MirrorTexture che crea una "telecamera" virtuale che guarda la scena dalla prospettiva della superficie riflettente. L'immagine che vede viene renderizzata su una texture, che poi viene applicata al materiale della tua acqua.
 
