@@ -1,6 +1,6 @@
 # Endostaupath
 
-# paged hosted in: sono una prova
+# paged hosted in:
 https://app.netlify.com/projects/inspiring-douhua-26811a/deploys
 
 
