@@ -1,14 +1,14 @@
-// generator.js — Worker generazione regioni (FILE VERSION = 4)
+// generator.js — Worker generazione regioni (FILE VERSION = 5)
 // Output: postMessage({ type:'regionGenerated', regionX, regionY, regionZ, buffer }, [buffer])
-// Responsabilità: SOLO dati (chunkType, 30^3 voxel, maschere CATEGORIA-NEIGHBOR 3-bit).
+// Responsabilità: SOLO dati (header chunk, 30^3 voxel, maschere di bordo a 1 bit).
 // La logica "disegnare/non disegnare" resta nel worker.js.
 
-//// =====================
+// =====================
 // CONFIG
-//// =====================
+// =====================
 const CONFIG = {
   FILE: {
-    VERSION: 4,                // v4: [1B chunkType][30^3 voxel][6 facce * 900 celle * 3 bit categoria vicino]
+    VERSION: 5,                // v5: [HEADER_CHUNK(12B)][30^3 voxel][mask bordo 1-bit]
   },
   WORLD: {
     REGION_DIM: 4,             // 4x4x4 chunk per regione
@@ -17,7 +17,7 @@ const CONFIG = {
   LEVELS: {
     SKY_LEVEL: 50,
     GROUND_LEVEL: 10,
-    SEA_LEVEL: 6,
+    SEA_LEVEL: 6,              // livello "acqua" base (usato anche in prateria)
   },
   NOISE: {
     surfaceScale: 0.05,        // terreno
@@ -25,21 +25,85 @@ const CONFIG = {
     caveThreshold: 0.30,
     cloudScale: 0.02,          // nuvole
     cloudThreshold: 0.40,
+    waterModScale: 0.02,       // modula leggermente il livello dell'acqua (laghi/insenature)
+    waterModAmp: 2,            // +/- ampiezza in voxel del livello acqua locale
   },
-  // palette "valori" per la generazione logica (per chunkType)
-  PALETTE_VALUES: {
-    PRAIRIE:   { Air:0, Dirt:1, Grass:2, Rock:3, Cloud:4 },
-    UNDERWATER:{ Water:0, Sand:1, Coral:2, Rock:3, Air:4 },
-    SKY:       { Air:0, Cloud:4 },
-  }
 };
 
-// categorie condivise (usate solo come codifica dati, NON per decisione qui)
-const C = { Air:0, Opaque:1, Water:2, Acid:3, Lava:4, Cloud:5 };
+// =====================
+// VoxelSet: tipi globali logici
+// =====================
+const VoxelSet = (() => {
+  const T = {
+    Air:   0,
+    Dirt:  1,
+    Grass: 2,
+    Rock:  3,
+    Wood:  4,
+    Water: 5,
+    Acid:  6,
+    Lava:  7,
+    Cloud: 8,
+    Sand:  9,
+    Coral: 10,
+  };
+  const C = { Air:0, Opaque:1, Water:2, Acid:3, Lava:4, Cloud:5 };
 
-//// =====================
+  const meta = [];
+  meta[T.Air]   = { key:"Air",   category:C.Air,   transparent:false };
+  meta[T.Dirt]  = { key:"Dirt",  category:C.Opaque,transparent:false };
+  meta[T.Grass] = { key:"Grass", category:C.Opaque,transparent:false };
+  meta[T.Rock]  = { key:"Rock",  category:C.Opaque,transparent:false };
+  meta[T.Wood]  = { key:"Wood",  category:C.Opaque,transparent:false };
+  meta[T.Water] = { key:"Water", category:C.Water, transparent:true  };
+  meta[T.Acid]  = { key:"Acid",  category:C.Acid,  transparent:true  };
+  meta[T.Lava]  = { key:"Lava",  category:C.Lava,  transparent:true  };
+  meta[T.Cloud] = { key:"Cloud", category:C.Cloud, transparent:true  };
+  meta[T.Sand]  = { key:"Sand",  category:C.Opaque,transparent:false };
+  meta[T.Coral] = { key:"Coral", category:C.Opaque,transparent:false };
+
+  const isAir         = (id) => id === T.Air;
+  const isTransparent = (id) => !!meta[id]?.transparent;
+  const isSolid       = (id) => !isAir(id) && !isTransparent(id);
+
+  return { T, C, meta, isAir, isTransparent, isSolid };
+})();
+
+// =====================
+// Palette per chunkType: valore locale (0..255) -> typeId globale (VoxelSet)
+// (oggi solo cubi; in futuro potrai far mappare anche shape/orientazione nel worker)
+// =====================
+function makePaletteForChunkType(chunkType) {
+  // 0=prairie, 1=underwater, 2=sky
+  const m = new Uint8Array(256); // default = Air
+  m.fill(VoxelSet.T.Air);
+
+  if (chunkType === 1) { // underwater
+    // locale: 0=Water,1=Sand,2=Coral,3=Rock,4=Air
+    m[0] = VoxelSet.T.Water;
+    m[1] = VoxelSet.T.Sand;
+    m[2] = VoxelSet.T.Coral;
+    m[3] = VoxelSet.T.Rock;
+    m[4] = VoxelSet.T.Air;
+  } else if (chunkType === 2) { // sky
+    // locale: 0=Air,4=Cloud
+    m[0] = VoxelSet.T.Air;
+    m[4] = VoxelSet.T.Cloud;
+  } else { // prairie (default)
+    // locale: 0=Air,1=Dirt,2=Grass,3=Rock,4=Cloud,5=Water
+    m[0] = VoxelSet.T.Air;
+    m[1] = VoxelSet.T.Dirt;
+    m[2] = VoxelSet.T.Grass;
+    m[3] = VoxelSet.T.Rock;
+    m[4] = VoxelSet.T.Cloud;
+    m[5] = VoxelSet.T.Water; // <--- acqua anche in prateria
+  }
+  return m;
+}
+
+// =====================
 // PERLIN 3D
-//// =====================
+// =====================
 const permutation = new Uint8Array([
   151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,
   247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,175,87,86,232,199,158,58,
@@ -74,66 +138,37 @@ function perlin3(x, y, z){
              lerp(u, grad(p[AB+1], x, y-1, z-1), grad(p[BB+1], x-1, y-1, z-1))));
 }
 
-//// =====================
+// =====================
 // COSTANTI DERIVATE
-//// =====================
+// =====================
 const REGION_DIM = CONFIG.WORLD.REGION_DIM;
 const CHUNK_SIZE = CONFIG.WORLD.CHUNK_SIZE;
 const TOTAL_CHUNKS = REGION_DIM * REGION_DIM * REGION_DIM;
 
-const BYTES_30CUBE = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;        // 27.000
-const FACE_CELLS   = CHUNK_SIZE * CHUNK_SIZE;                      // 900
-const CAT_BITS     = 3;                                            // 3 bit per cella
-const MASK_BITS    = 6 * FACE_CELLS * CAT_BITS;                    // 16.200 bit
-const MASK_BYTES   = (MASK_BITS + 7) >> 3;                         // 2.025 byte
+const BYTES_30CUBE = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;     // 27.000
+const FACE_CELLS   = CHUNK_SIZE * CHUNK_SIZE;                   // 900
+const MASK_BITS    = 6 * FACE_CELLS;                            // 5400 bit
+const MASK_BYTES   = (MASK_BITS + 7) >> 3;                      // 675 byte
 
-const CHUNK_HEADER_BYTES = 1;                                      // 1B chunkType
-const CHUNK_RECORD_SIZE  = CHUNK_HEADER_BYTES + BYTES_30CUBE + MASK_BYTES;
+const CHUNK_HDR_LEN  = 12;                                      // header per-chunk (compatto)
+const CHUNK_HDR_VER  = 1;
+const CHUNK_RECORD_SIZE = CHUNK_HDR_LEN + BYTES_30CUBE + MASK_BYTES;
 
-const FILE_HEADER_SIZE   = 11;                                     // 'VOXL'(4) + ver(1) + dim(3) + count(3)
-const INDEX_ENTRY_SIZE   = 5;                                      // 3B offset + 2B size
-const INDEX_TABLE_SIZE   = TOTAL_CHUNKS * INDEX_ENTRY_SIZE;
-const CHUNK_DATA_OFFSET  = FILE_HEADER_SIZE + INDEX_TABLE_SIZE;
+const FILE_HEADER_SIZE = 11;                                    // 'VOXL'(4) + ver(1) + dim(3) + count(3)
+const INDEX_ENTRY_SIZE = 5;                                     // 3B offset + 2B size
+const INDEX_TABLE_SIZE = TOTAL_CHUNKS * INDEX_ENTRY_SIZE;
+const CHUNK_DATA_OFFSET = FILE_HEADER_SIZE + INDEX_TABLE_SIZE;
 
-//// =====================
-// PALETTE -> CATEGORIA (solo mapping dati)
-//// =====================
-function categoryFromValue(chunkType, value){
-  switch (chunkType) {
-    case 1: { // UNDERWATER
-      const P = CONFIG.PALETTE_VALUES.UNDERWATER; // { Water:0, Sand:1, Coral:2, Rock:3, Air:4 }
-      if (value === P.Air)   return C.Air;
-      if (value === P.Water) return C.Water;
-      if (value === P.Sand)  return C.Opaque;
-      if (value === P.Coral) return C.Opaque;
-      if (value === P.Rock)  return C.Opaque;
-      return C.Opaque;
-    }
-    case 2: { // SKY
-      const P = CONFIG.PALETTE_VALUES.SKY; // { Air:0, Cloud:4 }
-      if (value === P.Air)   return C.Air;
-      if (value === P.Cloud) return C.Cloud;
-      return C.Air;
-    }
-    default: { // 0 PRAIRIE
-      const P = CONFIG.PALETTE_VALUES.PRAIRIE; // { Air:0, Dirt:1, Grass:2, Rock:3, Cloud:4 }
-      if (value === P.Air)   return C.Air;
-      if (value === P.Cloud) return C.Cloud;
-      return C.Opaque; // Dirt/Grass/Rock
-    }
-  }
-}
-
-//// =====================
+// =====================
 // MODELLI DATI
-//// =====================
+// =====================
 class VoxelChunk30 {
   constructor(chunkType, data30){
-    this.chunkType = chunkType;
-    this.data = data30; // Uint8Array(27k)
+    this.chunkType = chunkType;          // 0 prairie, 1 underwater, 2 sky
+    this.data = data30;                  // Uint8Array(27k) valori locali (0..255)
   }
   get(x,y,z){
-    if (x<0||y<0||z<0||x>=CHUNK_SIZE||y>=CHUNK_SIZE||z>=CHUNK_SIZE) return null;
+    if (x<0||y<0||z<0||x>=CHUNK_SIZE||y>=CHUNK_SIZE||z>=CHUNK_SIZE) return 0;
     return this.data[x + CHUNK_SIZE*(y + CHUNK_SIZE*z)];
   }
 }
@@ -143,7 +178,6 @@ class WorldGenerator {
     this.seed = seed;
     this.cache = new Map(); // key -> VoxelChunk30
   }
-
   key(RX,RY,RZ, CX,CY,CZ){ return `${RX}:${RY}:${RZ}:${CX}:${CY}:${CZ}`; }
 
   determineChunkType(RX,RY,RZ, CX,CY,CZ){
@@ -155,13 +189,23 @@ class WorldGenerator {
 
   generateLogicalChunk(RX,RY,RZ, CX,CY,CZ, chunkType){
     const a = new Uint8Array(BYTES_30CUBE);
-    const sScale = CONFIG.NOISE.surfaceScale;
-    const cScale = CONFIG.NOISE.caveScale, cThr = CONFIG.NOISE.caveThreshold;
-    const clScale = CONFIG.NOISE.cloudScale, clThr = CONFIG.NOISE.cloudThreshold;
+    // palette locale (valore -> typeId globale)
+    const pal = makePaletteForChunkType(chunkType);
 
-    const PV = (chunkType===1) ? CONFIG.PALETTE_VALUES.UNDERWATER
-             : (chunkType===2) ? CONFIG.PALETTE_VALUES.SKY
-                               : CONFIG.PALETTE_VALUES.PRAIRIE;
+    const sScale   = CONFIG.NOISE.surfaceScale;
+    const cScale   = CONFIG.NOISE.caveScale, cThr = CONFIG.NOISE.caveThreshold;
+    const clScale  = CONFIG.NOISE.cloudScale, clThr = CONFIG.NOISE.cloudThreshold;
+    const wScale   = CONFIG.NOISE.waterModScale, wAmp = CONFIG.NOISE.waterModAmp;
+
+    // comodi alias “valore locale” per scrittura (non typeId!)
+    let Air, Dirt, Grass, Rock, Cloud, Sand, Water, Coral;
+    if (chunkType === 1){ // underwater: 0=Water,1=Sand,2=Coral,3=Rock,4=Air
+      Water=0; Sand=1; Coral=2; Rock=3; Air=4; Cloud=4; Dirt=1; Grass=1; // placeholder
+    } else if (chunkType === 2){ // sky: 0=Air,4=Cloud
+      Air=0; Cloud=4; Dirt=1; Grass=2; Rock=3; Sand=1; Water=0; Coral=2; // placeholder
+    } else { // prairie: 0=Air,1=Dirt,2=Grass,3=Rock,4=Cloud,5=Water
+      Air=0; Dirt=1; Grass=2; Rock=3; Cloud=4; Water=5; Sand=1; Coral=3; // placeholder
+    }
 
     for (let x=0; x<CHUNK_SIZE; x++){
       for (let y=0; y<CHUNK_SIZE; y++){
@@ -170,32 +214,48 @@ class WorldGenerator {
           const gY = RY*(REGION_DIM*CHUNK_SIZE) + CY*CHUNK_SIZE + y;
           const gZ = RZ*(REGION_DIM*CHUNK_SIZE) + CZ*CHUNK_SIZE + z;
 
-          let v = PV.Air;
+          let val = Air;
 
           if (chunkType === 2) {
+            // SKY: aria + nuvole
             const n = perlin3(gX*clScale, gY*clScale, gZ*clScale);
-            v = (n > clThr) ? PV.Cloud : PV.Air;
+            val = (n > clThr) ? Cloud : Air;
           } else {
+            // Altezza terreno
             const n = perlin3(gX*sScale, 0, gZ*sScale);
             const surfaceH = CONFIG.LEVELS.GROUND_LEVEL + Math.floor(Math.abs(n)*20);
+
             if (gY < surfaceH) {
-              v = (gY === surfaceH-1)
-                ? ((chunkType===1) ? PV.Sand : PV.Grass)
-                : PV.Dirt;
+              val = (gY === surfaceH-1) ? (chunkType===1 ? Sand : Grass) : Dirt;
             }
+
+            // Caverne sotto ground_level
             if (gY < CONFIG.LEVELS.GROUND_LEVEL){
               const c = perlin3(gX*cScale, gY*cScale, gZ*cScale);
-              v = (c > cThr) ? PV.Rock : PV.Air;
+              val = (c > cThr) ? Rock : Air;
             }
-            if (chunkType === 1 && gY < CONFIG.LEVELS.SEA_LEVEL) {
-              if (v === PV.Air) v = PV.Water;
+
+            // Acqua: sia in UNDERWATER che in PRAIRIE sotto un livello modulato
+            // livello acqua locale: SEA_LEVEL +/- wAmp in base al noise
+            const wNoise = perlin3(gX*wScale, 0, gZ*wScale);
+            const localWaterLevel = CONFIG.LEVELS.SEA_LEVEL + Math.floor(wNoise * wAmp);
+
+            if (gY <= localWaterLevel) {
+              // se è aria (vuoto), riempi d'acqua
+              if (val === Air) val = Water;
+              // se prateria e a pelo d'acqua, puoi avere sabbia sui bordi bassi
+              if (chunkType === 0 && gY === localWaterLevel && val === Dirt) {
+                // un po' di sabbia ai margini del lago/rivera
+                if ((gX + gZ) % 7 === 0) val = Dirt; // lascia un po' irregolare
+              }
             }
           }
 
-          a[x + CHUNK_SIZE*(y + CHUNK_SIZE*z)] = v;
+          a[x + CHUNK_SIZE*(y + CHUNK_SIZE*z)] = val;
         }
       }
     }
+
     return new VoxelChunk30(chunkType, a);
   }
 
@@ -209,136 +269,136 @@ class WorldGenerator {
   }
 }
 
-//// =====================
-// MASCHERE "CATEGORIA DEL VICINO" (3 bit) — NIENTE regole di rendering qui
-//// =====================
+// =====================
+// MASCHERA BORDO 1-BIT (decisione già calcolata) — niente guscio
+// Regola: 1 (disegna) se vicino è Air oppure è Trasparente (non-Air) di tipo diverso.
+//         0 (non disegnare) se vicino è Solido, oppure Trasparente dello stesso tipo, oppure self è Air.
+// =====================
+function buildBorderMask1bit(gen, RX,RY,RZ, CX,CY,CZ, localChunk) {
+  const N = CHUNK_SIZE, FACE_CELLS = N*N, TOTAL_BITS = 6*FACE_CELLS;
+  const mask = new Uint8Array((TOTAL_BITS+7)>>3);
+  let bit = 0;
 
-// scrive un valore [0..7] in 3 bit nello stream
-function write3Bits(bufU8, bitIndex, value){
-  let v = value & 0b111;
-  for (let i=0; i<3; i++){
-    const b = (v >> i) & 1;
-    const byteIndex = (bitIndex + i) >> 3;
-    const bit = (bitIndex + i) & 7;
-    if (b) bufU8[byteIndex] |= (1 << bit);
-    else   bufU8[byteIndex] &= ~(1 << bit);
-  }
-}
+  const palSelf = makePaletteForChunkType(localChunk.chunkType);
+  const localVal = (x,y,z) => localChunk.get(x,y,z);
+  const typeSelf = (x,y,z) => palSelf[ localVal(x,y,z) ];
 
-// risolve categoria del voxel (self o vicino) dato (chunkType, value)
-function catOf(chunkType, voxelValue){
-  return categoryFromValue(chunkType, voxelValue);
-}
-
-// calcola le 6 facce; per ogni cella scrive la **CATEGORIA del vicino** in 3 bit
-function buildNeighborCategoryMasks(gen, RX,RY,RZ, CX,CY,CZ, localChunk){
-  const mask = new Uint8Array(MASK_BYTES);
-  let bitPtr = 0;
-
-  function neighborCat(dirX,dirY,dirZ, x,y,z){
-    // spostati “fuori” di 1 unità
-    let nRX = RX, nRY = RY, nRZ = RZ;
-    let nCX = CX, nCY = CY, nCZ = CZ;
-    let nx = x + dirX, ny = y + dirY, nz = z + dirZ;
-
-    if (nx < 0)               { nCX--; nx = CHUNK_SIZE-1; }
-    else if (nx >= CHUNK_SIZE){ nCX++; nx = 0; }
-    if (ny < 0)               { nCY--; ny = CHUNK_SIZE-1; }
-    else if (ny >= CHUNK_SIZE){ nCY++; ny = 0; }
-    if (nz < 0)               { nCZ--; nz = CHUNK_SIZE-1; }
-    else if (nz >= CHUNK_SIZE){ nCZ++; nz = 0; }
-
-    if (nCX < 0)                 { nRX--; nCX = REGION_DIM-1; }
-    else if (nCX >= REGION_DIM)  { nRX++; nCX = 0; }
-    if (nCY < 0)                 { nRY--; nCY = REGION_DIM-1; }
-    else if (nCY >= REGION_DIM)  { nRY++; nCY = 0; }
-    if (nCZ < 0)                 { nRZ--; nCZ = REGION_DIM-1; }
-    else if (nCZ >= REGION_DIM)  { nRZ++; nCZ = 0; }
-
+  function neighborType(dirX,dirY,dirZ, x,y,z) {
+    let nRX=RX, nRY=RY, nRZ=RZ, nCX=CX, nCY=CY, nCZ=CZ;
+    let nx=x+dirX, ny=y+dirY, nz=z+dirZ;
+    if (nx<0){nCX--; nx=N-1;} else if (nx>=N){nCX++; nx=0;}
+    if (ny<0){nCY--; ny=N-1;} else if (ny>=N){nCY++; ny=0;}
+    if (nz<0){nCZ--; nz=N-1;} else if (nz>=N){nCZ++; nz=0;}
+    if (nCX<0){nRX--; nCX=REGION_DIM-1;} else if (nCX>=REGION_DIM){nRX++; nCX=0;}
+    if (nCY<0){nRY--; nCY=REGION_DIM-1;} else if (nCY>=REGION_DIM){nRY++; nCY=0;}
+    if (nCZ<0){nRZ--; nCZ=REGION_DIM-1;} else if (nCZ>=REGION_DIM){nRZ++; nCZ=0;}
     const neigh = gen.getOrCreateChunk(nRX,nRY,nRZ, nCX,nCY,nCZ);
+    const palNei = makePaletteForChunkType(neigh.chunkType);
     const v = neigh.get(nx,ny,nz);
-    return catOf(neigh.chunkType, v); // categoria del VICINO, codificata 0..7
+    return palNei[v]; // typeId globale
   }
 
-  // +X (x=29): scrivi 900 celle (y,z)
-  for (let y=0; y<CHUNK_SIZE; y++){
-    for (let z=0; z<CHUNK_SIZE; z++){
-      const catN = neighborCat(+1,0,0, CHUNK_SIZE-1, y, z);
-      write3Bits(mask, bitPtr, catN); bitPtr += 3;
-    }
+  function setBit(u8, idx, val){ const B=idx>>3, o=idx&7; if(val) u8[B]|=(1<<o); else u8[B]&=~(1<<o); }
+
+  function borderBit(tSelf, tNei) {
+    if (VoxelSet.isAir(tSelf)) return 0;     // niente facce "dell'aria"
+    if (VoxelSet.isAir(tNei))  return 1;     // solido/trasp vs aria => sì
+    if (VoxelSet.isSolid(tNei)) return 0;    // contro solido => no
+    // vicino trasparente (non-Air) => sì SOLO se tipo diverso
+    return (tSelf !== tNei) ? 1 : 0;
+  }
+
+  // +X (x=29)
+  for (let y=0;y>N;y++) for (let z=0;z<N;z++){
+    const tS = typeSelf(N-1,y,z);
+    const tN = neighborType(+1,0,0, N-1,y,z);
+    setBit(mask, bit++, borderBit(tS, tN));
   }
   // -X (x=0)
-  for (let y=0; y<CHUNK_SIZE; y++){
-    for (let z=0; z<CHUNK_SIZE; z++){
-      const catN = neighborCat(-1,0,0, 0, y, z);
-      write3Bits(mask, bitPtr, catN); bitPtr += 3;
-    }
+  for (let y=0;y<N;y++) for (let z=0;z<N;z++){
+    const tS = typeSelf(0,y,z);
+    const tN = neighborType(-1,0,0, 0,y,z);
+    setBit(mask, bit++, borderBit(tS, tN));
   }
   // +Y (y=29)
-  for (let x=0; x<CHUNK_SIZE; x++){
-    for (let z=0; z<CHUNK_SIZE; z++){
-      const catN = neighborCat(0,+1,0, x, CHUNK_SIZE-1, z);
-      write3Bits(mask, bitPtr, catN); bitPtr += 3;
-    }
+  for (let x=0;x<N;x++) for (let z=0;z<N;z++){
+    const tS = typeSelf(x,N-1,z);
+    const tN = neighborType(0,+1,0, x,N-1,z);
+    setBit(mask, bit++, borderBit(tS, tN));
   }
   // -Y (y=0)
-  for (let x=0; x<CHUNK_SIZE; x++){
-    for (let z=0; z<CHUNK_SIZE; z++){
-      const catN = neighborCat(0,-1,0, x, 0, z);
-      write3Bits(mask, bitPtr, catN); bitPtr += 3;
-    }
+  for (let x=0;x<N;x++) for (let z=0;z<N;z++){
+    const tS = typeSelf(x,0,z);
+    const tN = neighborType(0,-1,0, x,0,z);
+    setBit(mask, bit++, borderBit(tS, tN));
   }
   // +Z (z=29)
-  for (let x=0; x<CHUNK_SIZE; x++){
-    for (let y=0; y<CHUNK_SIZE; y++){
-      const catN = neighborCat(0,0,+1, x, y, CHUNK_SIZE-1);
-      write3Bits(mask, bitPtr, catN); bitPtr += 3;
-    }
+  for (let x=0;x<N;x++) for (let y=0;y<N;y++){
+    const tS = typeSelf(x,y,N-1);
+    const tN = neighborType(0,0,+1, x,y,N-1);
+    setBit(mask, bit++, borderBit(tS, tN));
   }
   // -Z (z=0)
-  for (let x=0; x<CHUNK_SIZE; x++){
-    for (let y=0; y<CHUNK_SIZE; y++){
-      const catN = neighborCat(0,0,-1, x, y, 0);
-      write3Bits(mask, bitPtr, catN); bitPtr += 3;
-    }
+  for (let x=0;x<N;x++) for (let y=0;y<N;y++){
+    const tS = typeSelf(x,y,0);
+    const tN = neighborType(0,0,-1, x,y,0);
+    setBit(mask, bit++, borderBit(tS, tN));
   }
 
-  return mask; // 2025 byte
+  return mask; // Uint8Array(675)
 }
 
-//// =====================
-// SCRITTURA FILE REGIONE (v4)
-//// =====================
+// =====================
+// SCRITTURA FILE REGIONE (v5)
+// =====================
+function writeChunkHeader(view, baseOffset, {
+  chunkType, mediumType, paletteId=0, flags=0,
+  waterLevel=-1, temp=0, humidity=0
+}){
+  // Header 12B: [LEN][VER][CHUNK_TYPE][MEDIUM][PALETTE_ID][FLAGS][WATER_LEVEL:i16][TEMP:i8][HUM:i8]
+  const u8 = new Uint8Array(view.buffer, baseOffset, CHUNK_HDR_LEN);
+  let o = 0;
+  u8[o++] = CHUNK_HDR_LEN;                // LEN
+  u8[o++] = CHUNK_HDR_VER;                // VER
+  u8[o++] = chunkType & 0xFF;             // CHUNK_TYPE
+  u8[o++] = mediumType & 0xFF;            // MEDIUM_TYPE (0=Air,1=Water,2=Acid,3=Lava,...)
+  u8[o++] = paletteId & 0xFF;             // PALETTE_ID (non usato ora)
+  u8[o++] = flags & 0xFF;                 // FLAGS
+  view.setInt16(baseOffset + o, waterLevel|0, false); o += 2; // big-endian
+  u8[o++] = (temp|0) & 0xFF;              // TEMP
+  u8[o++] = (humidity|0) & 0xFF;          // HUM
+  return CHUNK_HDR_LEN;
+}
+
 function writeRegionFile(gen, RX,RY,RZ){
   const chunks = [];
   const types  = [];
-  const masks  = []; // Uint8Array(2025)
+  const masks  = []; // Uint8Array(675)
 
   for (let CX=0; CX<REGION_DIM; CX++){
     for (let CY=0; CY<REGION_DIM; CY++){
       for (let CZ=0; CZ<REGION_DIM; CZ++){
-        const ch   = gen.getOrCreateChunk(RX,RY,RZ, CX,CY,CZ);
-        const mcat = buildNeighborCategoryMasks(gen, RX,RY,RZ, CX,CY,CZ, ch);
+        const ch = gen.getOrCreateChunk(RX,RY,RZ, CX,CY,CZ);
+        const m  = buildBorderMask1bit(gen, RX,RY,RZ, CX,CY,CZ, ch);
         chunks.push(ch);
         types.push(ch.chunkType);
-        masks.push(mcat);
+        masks.push(m);
       }
     }
   }
 
-  const totalFileSize = CHUNK_DATA_OFFSET + TOTAL_CHUNKS * CHUNK_RECORD_SIZE;
-  const buffer = new ArrayBuffer(totalFileSize);
+  const buffer = new ArrayBuffer(CHUNK_DATA_OFFSET + TOTAL_CHUNKS * CHUNK_RECORD_SIZE);
   const view = new DataView(buffer);
 
-  // Header
+  // Header file (11B): 'VOXL', versione, dim chunk (30,30,30), numero chunk (64)
   view.setUint32(0, 0x564F584C, false); // 'VOXL'
-  view.setUint8(4, CONFIG.FILE.VERSION); // 4
+  view.setUint8(4, CONFIG.FILE.VERSION);
   view.setUint8(5, CHUNK_SIZE);
   view.setUint8(6, CHUNK_SIZE);
   view.setUint8(7, CHUNK_SIZE);
-  view.setUint8(8, 0); view.setUint8(9, 0); view.setUint8(10, TOTAL_CHUNKS); // 64
+  view.setUint8(8, 0); view.setUint8(9, 0); view.setUint8(10, TOTAL_CHUNKS);
 
-  // Index table
+  // Index table (offset, size per chunk)
   const idx = new Uint8Array(buffer, FILE_HEADER_SIZE, INDEX_TABLE_SIZE);
   let off = CHUNK_DATA_OFFSET;
   for (let i=0; i<TOTAL_CHUNKS; i++){
@@ -350,20 +410,34 @@ function writeRegionFile(gen, RX,RY,RZ){
     off += CHUNK_RECORD_SIZE;
   }
 
-  // Dati per chunk: [1B chunkType][27000 voxel][2025 bytes categorie-neighbor]
+  // Dati per chunk
   let ptr = CHUNK_DATA_OFFSET;
   for (let i=0; i<TOTAL_CHUNKS; i++){
-    new Uint8Array(buffer, ptr, 1)[0] = types[i]; ptr += 1;
-    new Uint8Array(buffer, ptr, BYTES_30CUBE).set(chunks[i].data); ptr += BYTES_30CUBE;
-    new Uint8Array(buffer, ptr, MASK_BYTES).set(masks[i]); ptr += MASK_BYTES;
+    const chunkType = types[i];
+    // mediumType coerente (vuoto del chunk) — utile per mezzi voxel nel worker
+    const mediumType = (chunkType === 1) ? 1 /*Water*/ : 0 /*Air*/;
+    const headerWritten = writeChunkHeader(view, ptr, {
+      chunkType, mediumType,
+      paletteId: 0, flags: 0,
+      waterLevel: CONFIG.LEVELS.SEA_LEVEL, temp: 0, humidity: 0
+    });
+    ptr += headerWritten;
+
+    // 30^3 valori locali
+    new Uint8Array(buffer, ptr, BYTES_30CUBE).set(chunks[i].data);
+    ptr += BYTES_30CUBE;
+
+    // maschera bordo 1-bit
+    new Uint8Array(buffer, ptr, MASK_BYTES).set(masks[i]);
+    ptr += MASK_BYTES;
   }
 
   return buffer;
 }
 
-//// =====================
+// =====================
 // WORLD GENERATOR
-//// =====================
+// =====================
 const gen = new WorldGenerator();
 
 self.onmessage = (ev) => {
