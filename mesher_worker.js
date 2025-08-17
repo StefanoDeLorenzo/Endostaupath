@@ -193,28 +193,6 @@ function meshSubchunk(ctx, sx,sy,sz){
     }
   }
 
-  // finalize identico a prima...
-  const outOpaque = {}, outTrans = {}, transfer = [];
-  for (const [id,b] of opaque.entries()){
-    const fin = finalizeBatch(b);
-    outOpaque[id] = fin;
-    transfer.push(fin.positions.buffer, fin.normals.buffer, fin.uvs.buffer, fin.colors.buffer, fin.indices.buffer);
-  }
-  for (const [id,b] of translucent.entries()){
-    const fin = finalizeBatch(b);
-    outTrans[id] = fin;
-    transfer.push(fin.positions.buffer, fin.normals.buffer, fin.uvs.buffer, fin.colors.buffer, fin.indices.buffer);
-  }
-
-  return {
-    subIndex:[sx,sy,sz],
-    batches:{ opaque: outOpaque, translucent: outTrans },
-    stats:{ faces: facesOut, voxels: voxCount },
-    transfer
-  };
-}
-
-
   // finalize → object di batches + transferable buffers
   const outOpaque = {}, outTrans = {}, transfer = [];
   for (const [id,b] of opaque.entries()){
@@ -235,6 +213,7 @@ function meshSubchunk(ctx, sx,sy,sz){
     transfer
   };
 }
+
 
 // ====== Utility: quali sub-chunk sono toccati da un edit ======
 function affectedSubchunksForEdits(edits, subSize){
