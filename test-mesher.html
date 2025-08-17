@@ -131,26 +131,29 @@
 
   // Material factory (uno per (alphaMode))
   const materialCache = new Map(); // key: `${alphaMode}`
+
   function ensureMaterial(alphaMode){
     const key = String(alphaMode || 'opaque');
     if (materialCache.has(key)) return materialCache.get(key);
-    // StandardMaterial (va benissimo per test). UV già calcolate dal mesher; usiamo vertex colors.
     const m = new BABYLON.StandardMaterial('mat_'+key, scene);
     m.diffuseTexture = atlasTex;
     m.specularColor = new BABYLON.Color3(0,0,0);
     m.disableLighting = false;
     m.backFaceCulling = chkBackface.checked;
     m.alpha = 1.0;
+    m.useVertexColors = true; // <— nuovo
     if (key === 'blend') {
-      m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
-      m.needDepthPrePass = true; // aiuta un po' coi transparent
+        m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
+        m.needDepthPrePass = true;
     } else {
-      m.transparencyMode = BABYLON.Material.MATERIAL_OPAQUE;
+        m.transparencyMode = BABYLON.Material.MATERIAL_OPAQUE;
     }
     m.wireframe = chkWire.checked;
     materialCache.set(key, m);
     return m;
   }
+
+
   chkWire.addEventListener('change', () => { materialCache.forEach(m => m.wireframe = chkWire.checked); });
   chkBackface.addEventListener('change', () => { materialCache.forEach(m => m.backFaceCulling = chkBackface.checked); });
 
@@ -279,16 +282,15 @@
 
   // calcola il "local Air" della palette per dare un hint
   function computeLocalAirFor(chunkType){
-    const pal = VoxelLib.makePaletteForChunkType(chunkType);
-    for (let i=0;i<256;i++){
-      if (VoxeLib?.getTypeId ? VoxelLib.getTypeId(pal[i]) === VoxelLib.VoxelSet.T.Air
-                              : VoxelLib.VoxelSet.T.Air === VoxelLib.VoxelSet.T.Air) {
-        // fallback; la condizione sopra va bene in ogni caso
-      }
-    }
-    // semplice: in tutte le nostre palette 0 è Air (prairie/sky) o 4 è Air (underwater).
-    return (chunkType === VoxelLib.ChunkType.UNDERWATER) ? 4 : 0;
+  const pal = VoxelLib.makePaletteForChunkType(chunkType);
+  for (let i = 0; i < 256; i++) {
+    const bs = pal[i];                               // blockStateId
+    const typeId = VoxelLib.getTypeId(bs);           // voxel type globale
+    if (typeId === VoxelLib.VoxelSet.T.Air) return i; // primo indice locale che mappa ad Air
   }
+  // fallback ragionevole se non trovato
+  return (chunkType === VoxelLib.ChunkType.UNDERWATER) ? 4 : 0;
+}
 
   btnInit.addEventListener('click', () => {
     try {
