@@ -24,6 +24,7 @@
   </style>
   <!-- Lib voxel -->
   <script src="voxel_types.js"></script>
+  <script src="voxel_materials.js"></script>
   <!-- BabylonJS -->
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
 </head>
@@ -129,30 +130,24 @@
   atlasTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
   atlasTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
 
-  // Material factory (uno per (alphaMode))
-  const materialCache = new Map(); // key: `${alphaMode}`
-
-  function ensureMaterial(alphaMode){
-    const key = String(alphaMode || 'opaque');
-    if (materialCache.has(key)) return materialCache.get(key);
-    const m = new BABYLON.StandardMaterial('mat_'+key, scene);
-    m.diffuseTexture = atlasTex;
-    m.specularColor = new BABYLON.Color3(0,0,0);
-    m.disableLighting = false;
-    m.backFaceCulling = chkBackface.checked;
-    m.alpha = 1.0;
-    m.useVertexColors = true; // <— nuovo
-    if (key === 'blend') {
-        m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
-        m.needDepthPrePass = true;
-        m.backFaceCulling = false;
-    } else {
-        m.transparencyMode = BABYLON.Material.MATERIAL_OPAQUE;
-    }
-    m.wireframe = chkWire.checked;
-    materialCache.set(key, m);
-    return m;
-  }
+  // Material factory (uno per (MaterialId))
+  const materialCache = new Map(); // key: materialId
+function ensureMaterialFor(materialId){
+  if (materialCache.has(materialId)) return materialCache.get(materialId);
+  const info = VoxelMaterials.getMaterial(materialId);
+  const m = new BABYLON.StandardMaterial('m'+materialId, scene);
+  m.diffuseTexture = new BABYLON.Texture(info.file, scene, true, false, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+  m.diffuseTexture.hasAlpha = (info.alphaMode === 'blend');
+  m.useVertexColors = true;
+  m.specularColor = new BABYLON.Color3(0,0,0);
+  m.backFaceCulling = (info.alphaMode === 'blend') ? false : chkBackface.checked;
+  m.wireframe = chkWire.checked;
+  m.transparencyMode = (info.alphaMode === 'blend')
+    ? BABYLON.Material.MATERIAL_ALPHABLEND
+    : BABYLON.Material.MATERIAL_OPAQUE;
+  materialCache.set(materialId, m);
+  return m;
+}
 
 
   chkWire.addEventListener('change', () => { materialCache.forEach(m => m.wireframe = chkWire.checked); });
@@ -160,36 +155,38 @@
 
   // Gestione submesh meshes: una mesh per (subIndex, alphaMode, materialId)
   const meshMap = new Map(); // key -> Mesh
-  function keyFor(subIndex, batch){ return `${subIndex[0]},${subIndex[1]},${subIndex[2]}|${batch.alphaMode}|${batch.materialId}`; }
+  function keyFor(subIndex, batch){
+  // semplifichiamo: una mesh per subIndex+materialId
+  return `${subIndex[0]},${subIndex[1]},${subIndex[2]}|${batch.materialId}`;
+}
 
-  function upsertBatchMesh(subIndex, batch){
-    const key = keyFor(subIndex, batch);
-    const old = meshMap.get(key);
-    if (old) old.dispose(false, true);
+function upsertBatchMesh(subIndex, batch){
+  const key = keyFor(subIndex, batch);
+  const old = meshMap.get(key);
+  if (old) old.dispose(false, true);
 
-    const m = new BABYLON.Mesh(key, scene);
-    const vd = new BABYLON.VertexData();
-    vd.positions = Array.from(batch.positions);
-    vd.normals   = Array.from(batch.normals);
-    vd.uvs       = Array.from(batch.uvs);
-    vd.colors    = Array.from(batch.colors);
-    vd.indices   = Array.from(batch.indices);
-    vd.applyToMesh(m);
+  const m = new BABYLON.Mesh(key, scene);
 
-    m.material = ensureMaterial(batch.alphaMode);
-    m.hasVertexAlpha = true;
+  const vd = new BABYLON.VertexData();
+  vd.positions = Array.from(batch.positions);
+  vd.normals   = Array.from(batch.normals);
+  vd.uvs       = Array.from(batch.uvs);
+  vd.colors    = Array.from(batch.colors);
+  vd.indices   = Array.from(batch.indices);
+  vd.applyToMesh(m);
 
-    // offsetta leggermente per evitare z-fighting tra opaco/trasparente
-    if (batch.alphaMode === 'blend') {
-      m.renderingGroupId = 2;
-      m.isPickable = false;
-    } else {
-      m.renderingGroupId = 1;
-    }
+  // materiale per materialId
+  m.material = ensureMaterialFor(batch.materialId);
+  m.hasVertexAlpha = true;
 
-    meshMap.set(key, m);
-    return m;
-  }
+  // decidi il rendering group in base al registry (non al batch)
+  const info = VoxelMaterials.getMaterial(batch.materialId);
+  m.renderingGroupId = (info.alphaMode === 'blend') ? 2 : 1;
+  if (info.alphaMode === 'blend') m.isPickable = false;
+
+  meshMap.set(key, m);
+  return m;
+}
 
   // Engine loop
   engine.runRenderLoop(() => scene.render());

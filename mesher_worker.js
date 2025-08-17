@@ -10,7 +10,7 @@ if (!LM) throw new Error('voxel_materials.js non caricato');
 const {
   ChunkType, VoxelSet,
   makePaletteForChunkType,
-  getTypeId, getModelMeta, getMaterialForFace, getAtlasUVRect, getVertexTint,
+  getTypeId, getModelMeta, getMaterialForFace, getVertexTint,
   borderBit
 } = L;
 
@@ -18,6 +18,7 @@ const {
 const N = 30;                    // chunk 30³
 const SUB = 15;                  // sub-chunk 15³ (2x2x2)
 const FACE = { PX:0, NX:1, PY:2, NY:3, PZ:4, NZ:5 };
+const UV_FULL = [0,0,1,1];
 function lin(x,y,z){ return x + N*(y + N*z); }
 
 const DIRS = [
@@ -158,7 +159,6 @@ function meshSubchunk(ctx, sx,sy,sz){
         const bsSelf = palette[lv];
         const model = getModelMeta(bsSelf);
 
-        // (per ora modelli = CUBE unit, HALF_SLAB arriverà: bbox/posizioni custom)
         for (let d=0; d<DIRS.length; d++){
           const dir = DIRS[d];
           const nx = x + dir.dx, ny = y + dir.dy, nz = z + dir.dz;
@@ -175,18 +175,45 @@ function meshSubchunk(ctx, sx,sy,sz){
           if (!visible) continue;
           facesOut++;
 
-          const mat = getMaterialForFace(bsSelf, dir.name);
-          const uvRect = getAtlasUVRect(mat.id);
-          const tint   = getVertexTint(mat.id);
-          const alpha  = mat.alphaMode || 'opaque';
+          // ⬇️ DIFFERENZA: risolviamo materialId usando la helper
+          const matFace = getMaterialForFace(bsSelf, dir.name);      // da voxel_types.js
+          const materialId = resolveMaterialId(matFace);              // numero
+
+          // ⬇️ DIFFERENZA: info dal registro materiali (file/alpha/tint)
+          const matInfo = LM.getMaterial(materialId);
+          const uvRect  = LM.getUVRect(materialId) || UV_FULL;        // [0,0,1,1]
+          const tint    = matInfo?.tint || [1,1,1,1];
+          const alpha   = matInfo?.alphaMode || 'opaque';
 
           const map = (alpha === 'blend') ? translucent : opaque;
-          if (!map.has(mat.id)) map.set(mat.id, makeBatch(mat.id, alpha));
-          pushQuad(map.get(mat.id), x, y, z, dir.face, uvRect, tint, dir.normal);
+          if (!map.has(materialId)) map.set(materialId, makeBatch(materialId, alpha));
+          pushQuad(map.get(materialId), x, y, z, dir.face, uvRect, tint, dir.normal);
         }
       }
     }
   }
+
+  // finalize identico a prima...
+  const outOpaque = {}, outTrans = {}, transfer = [];
+  for (const [id,b] of opaque.entries()){
+    const fin = finalizeBatch(b);
+    outOpaque[id] = fin;
+    transfer.push(fin.positions.buffer, fin.normals.buffer, fin.uvs.buffer, fin.colors.buffer, fin.indices.buffer);
+  }
+  for (const [id,b] of translucent.entries()){
+    const fin = finalizeBatch(b);
+    outTrans[id] = fin;
+    transfer.push(fin.positions.buffer, fin.normals.buffer, fin.uvs.buffer, fin.colors.buffer, fin.indices.buffer);
+  }
+
+  return {
+    subIndex:[sx,sy,sz],
+    batches:{ opaque: outOpaque, translucent: outTrans },
+    stats:{ faces: facesOut, voxels: voxCount },
+    transfer
+  };
+}
+
 
   // finalize → object di batches + transferable buffers
   const outOpaque = {}, outTrans = {}, transfer = [];
@@ -230,6 +257,15 @@ function affectedSubchunksForEdits(edits, subSize){
     out.push([sx,sy,sz]);
   }
   return out;
+}
+
+// ====== Utility: Restituisce l'id del materiale se gli viene passato un oggetto, altrimenti passa direttamente l'id ======
+function resolveMaterialId(matFaceValue) {
+  // Se voxel_types.getMaterialForFace restituisce un numero -> usalo
+  if (typeof matFaceValue === 'number') return matFaceValue;
+  // Se restituisce un oggetto { id, ... } -> usa .id
+  if (matFaceValue && typeof matFaceValue.id === 'number') return matFaceValue.id;
+  throw new Error('Materiale faccia non risolvibile: ' + String(matFaceValue));
 }
 
 // ====== Worker API ======
