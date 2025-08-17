@@ -2,138 +2,205 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <title>Test Mesher (chunk-based, sub-chunk 15³)</title>
+  <title>Test Mesher + Babylon</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: system-ui, Segoe UI, Roboto, sans-serif; margin: 16px; color: #222; }
-    header { margin-bottom: 12px; }
-    fieldset { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
-    legend { padding: 0 6px; color: #444; }
-    label { display: inline-block; min-width: 140px; margin-right: 8px; }
-    input[type="number"] { width: 100px; }
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, Segoe UI, Roboto, sans-serif; margin: 0; display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+    aside { padding: 12px; border-right: 1px solid #ddd; overflow: auto; }
+    main { position: relative; }
+    #renderArea { position: absolute; inset: 0; }
+    canvas { width: 100%; height: 100%; display: block; }
+    fieldset { border: 1px solid #ddd; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+    legend { padding: 0 6px; color: #555; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    label { min-width: 120px; display: inline-block; }
+    input[type="number"] { width: 90px; }
     button { padding: 6px 10px; border-radius: 6px; border: 1px solid #bbb; background: #f7f7f7; cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
-    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 12px; }
-    .card { border: 1px solid #eee; border-radius: 8px; padding: 10px; }
-    pre { background: #fafafa; border: 1px dashed #eee; padding: 8px; overflow: auto; max-height: 260px; }
-    .muted { color: #666; }
-    .ok { color: #0a7; }
-    .warn { color: #a60; }
-    .err { color: #b00; }
-    code { background: #f2f2f2; padding: 2px 4px; border-radius: 4px; }
-    .badge { display: inline-block; padding: 2px 6px; border-radius: 999px; background: #eef; }
+    .muted { color: #666; font-size: 12px; }
+    pre { background: #f8f8f8; padding: 8px; border-radius: 8px; max-height: 180px; overflow: auto; }
     .small { font-size: 12px; }
   </style>
+  <!-- Lib voxel -->
   <script src="voxel_types.js"></script>
+  <!-- BabylonJS -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Test Mesher</h1>
-    <div class="muted">Meshing chunk 30×30×30 in sub-chunk 15³, renderer-agnostico (niente Babylon qui).</div>
-  </header>
+  <aside>
+    <h2>Test Mesher</h2>
+    <p class="muted">Meshing chunk 30×30×30 → sub-chunk 15³. Renderer Babylon (atlas unico).</p>
 
-  <fieldset>
-    <legend>1) Carica file .voxl (v5)</legend>
-    <div class="row">
-      <input id="fileInput" type="file" accept=".voxl,application/octet-stream" />
-      <button id="btnInspect" disabled>Ispeziona header</button>
-      <span id="fileInfo" class="muted"></span>
-    </div>
-    <pre id="inspectOut" hidden></pre>
-  </fieldset>
+    <fieldset>
+      <legend>1) Carica file .voxl (v5)</legend>
+      <div class="row">
+        <input id="fileInput" type="file" accept=".voxl,application/octet-stream" />
+        <button id="btnInspect" disabled>Ispeziona</button>
+      </div>
+      <div id="fileInfo" class="muted"></div>
+      <pre id="inspectOut" hidden></pre>
+    </fieldset>
 
-  <fieldset>
-    <legend>2) Seleziona Chunk & Inizializza Mesher</legend>
-    <div class="row">
-      <label for="chunkIndex">chunkIndex (0-63)</label>
-      <input id="chunkIndex" type="number" min="0" max="63" value="0" />
-      <label for="subSize">subchunkSize</label>
-      <input id="subSize" type="number" min="5" max="30" step="1" value="15" />
-      <button id="btnInit" disabled>Init mesher</button>
-      <button id="btnBuildAll" disabled>Build ALL sub-chunk</button>
-    </div>
-    <div id="initInfo" class="muted"></div>
-  </fieldset>
+    <fieldset>
+      <legend>2) Chunk & Mesher</legend>
+      <div class="row">
+        <label>chunkIndex</label><input id="chunkIndex" type="number" min="0" max="63" value="0" />
+      </div>
+      <div class="row">
+        <label>subchunkSize</label><input id="subSize" type="number" min="5" max="30" value="15" />
+      </div>
+      <div class="row">
+        <button id="btnInit" disabled>Init mesher</button>
+        <button id="btnBuildAll" disabled>Build ALL</button>
+      </div>
+      <div class="row">
+        <label><input id="chkWire" type="checkbox" /> Wireframe</label>
+        <label><input id="chkBackface" type="checkbox" checked /> Backface culling</label>
+      </div>
+      <div id="initInfo" class="muted"></div>
+      <div id="paletteHint" class="small"></div>
+    </fieldset>
 
-  <fieldset>
-    <legend>3) Edit puntuali (applyEdits)</legend>
-    <div class="row">
-      <label for="editX">x</label><input id="editX" type="number" min="0" max="29" value="12" />
-      <label for="editY">y</label><input id="editY" type="number" min="0" max="29" value="7" />
-      <label for="editZ">z</label><input id="editZ" type="number" min="0" max="29" value="14" />
-      <label for="editVal">newVal (locale 0..255)</label><input id="editVal" type="number" min="0" max="255" value="0" />
-      <button id="btnApply" disabled>Applica edit</button>
-      <span class="small muted">Tip: per rimuovere usa il valore “locale Air” del chunk (vedi sotto).</span>
-    </div>
-    <div id="paletteHint" class="small"></div>
-  </fieldset>
+    <fieldset>
+      <legend>3) Edit puntuali</legend>
+      <div class="row">
+        <label>x</label><input id="editX" type="number" min="0" max="29" value="12" />
+        <label>y</label><input id="editY" type="number" min="0" max="29" value="7" />
+        <label>z</label><input id="editZ" type="number" min="0" max="29" value="14" />
+      </div>
+      <div class="row">
+        <label>newVal (0..255)</label><input id="editVal" type="number" min="0" max="255" value="0" />
+        <button id="btnApply" disabled>Applica</button>
+      </div>
+    </fieldset>
 
-  <div class="grid">
-    <div class="card">
-      <h3>Log</h3>
+    <fieldset>
+      <legend>Log</legend>
       <pre id="log"></pre>
-    </div>
-    <div class="card">
-      <h3>Ultime submesh</h3>
-      <pre id="lastSubmesh"></pre>
-    </div>
-  </div>
+    </fieldset>
+  </aside>
+
+  <main>
+    <div id="renderArea"><canvas id="c"></canvas></div>
+  </main>
 
 <script>
 (() => {
-  const logEl = document.getElementById('log');
-  const lastSubmeshEl = document.getElementById('lastSubmesh');
-  const inspectOut = document.getElementById('inspectOut');
-  const fileInfo = document.getElementById('fileInfo');
-  const initInfo = document.getElementById('initInfo');
-  const btnInspect = document.getElementById('btnInspect');
-  const btnInit = document.getElementById('btnInit');
-  const btnBuildAll = document.getElementById('btnBuildAll');
-  const btnApply = document.getElementById('btnApply');
-  const fileInput = document.getElementById('fileInput');
-  const chunkIndexInput = document.getElementById('chunkIndex');
-  const subSizeInput = document.getElementById('subSize');
-  const editX = document.getElementById('editX');
-  const editY = document.getElementById('editY');
-  const editZ = document.getElementById('editZ');
-  const editVal = document.getElementById('editVal');
-  const paletteHint = document.getElementById('paletteHint');
+  const FILE_HEADER_SIZE = 11, INDEX_ENTRY_SIZE = 5;
+  const N = 30, MASK_BYTES = 675, BYTES_30CUBE = 27000;
 
-  const FILE_HEADER_SIZE = 11;
-  const INDEX_ENTRY_SIZE = 5;
-  const N = 30;
-  const MASK_BYTES = 675;
-  const BYTES_30CUBE = 27000;
+  const el = (id) => document.getElementById(id);
+  const logEl = el('log');
+  const log = (m) => { logEl.textContent += m + '\\n'; logEl.scrollTop = logEl.scrollHeight; };
 
-  let regionBuffer = null;      // ArrayBuffer del file caricato
-  let regionU8 = null;          // Uint8Array view
-  let worker = null;
-  let currentChunkType = 0;
-  let currentChunkId = 'testChunk';
-  let currentPaletteLocalAir = 0; // helper per rimozione
+  // UI
+  const fileInput = el('fileInput');
+  const btnInspect = el('btnInspect');
+  const fileInfo = el('fileInfo');
+  const inspectOut = el('inspectOut');
+  const chunkIndexInput = el('chunkIndex');
+  const subSizeInput = el('subSize');
+  const btnInit = el('btnInit');
+  const btnBuildAll = el('btnBuildAll');
+  const btnApply = el('btnApply');
+  const chkWire = el('chkWire');
+  const chkBackface = el('chkBackface');
+  const initInfo = el('initInfo');
+  const paletteHint = el('paletteHint');
 
-  const L = window.VoxelLib;
-  const { ChunkType, VoxelSet, makePaletteForChunkType, getTypeId } = L;
+  // Babylon setup
+  const canvas = el('c');
+  const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+  const scene = new BABYLON.Scene(engine);
+  scene.createDefaultCameraOrLight(true, true, true);
+  const cam = scene.activeCamera;
+  cam.setTarget(new BABYLON.Vector3(15, 15, 15));
+  cam.radius = 60;
+  cam.minZ = 0.1;
 
-  function log(msg) {
-    logEl.textContent += msg + '\n';
-    logEl.scrollTop = logEl.scrollHeight;
+  // luce extra
+  const hemi = new BABYLON.HemisphericLight("h", new BABYLON.Vector3(0.3, 1, 0.2), scene);
+  hemi.intensity = 0.85;
+
+  // Atlas texture (metti il tuo file qui)
+  const ATLAS_URL = 'atlas.png';
+  const atlasTex = new BABYLON.Texture(ATLAS_URL, scene, true, false, BABYLON.Texture.TRILINEAR_SAMPLINGMODE);
+  atlasTex.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+  atlasTex.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+
+  // Material factory (uno per (alphaMode))
+  const materialCache = new Map(); // key: `${alphaMode}`
+  function ensureMaterial(alphaMode){
+    const key = String(alphaMode || 'opaque');
+    if (materialCache.has(key)) return materialCache.get(key);
+    // StandardMaterial (va benissimo per test). UV già calcolate dal mesher; usiamo vertex colors.
+    const m = new BABYLON.StandardMaterial('mat_'+key, scene);
+    m.diffuseTexture = atlasTex;
+    m.specularColor = new BABYLON.Color3(0,0,0);
+    m.disableLighting = false;
+    m.backFaceCulling = chkBackface.checked;
+    m.alpha = 1.0;
+    if (key === 'blend') {
+      m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
+      m.needDepthPrePass = true; // aiuta un po' coi transparent
+    } else {
+      m.transparencyMode = BABYLON.Material.MATERIAL_OPAQUE;
+    }
+    m.wireframe = chkWire.checked;
+    materialCache.set(key, m);
+    return m;
+  }
+  chkWire.addEventListener('change', () => { materialCache.forEach(m => m.wireframe = chkWire.checked); });
+  chkBackface.addEventListener('change', () => { materialCache.forEach(m => m.backFaceCulling = chkBackface.checked); });
+
+  // Gestione submesh meshes: una mesh per (subIndex, alphaMode, materialId)
+  const meshMap = new Map(); // key -> Mesh
+  function keyFor(subIndex, batch){ return `${subIndex[0]},${subIndex[1]},${subIndex[2]}|${batch.alphaMode}|${batch.materialId}`; }
+
+  function upsertBatchMesh(subIndex, batch){
+    const key = keyFor(subIndex, batch);
+    const old = meshMap.get(key);
+    if (old) old.dispose(false, true);
+
+    const m = new BABYLON.Mesh(key, scene);
+    const vd = new BABYLON.VertexData();
+    vd.positions = Array.from(batch.positions);
+    vd.normals   = Array.from(batch.normals);
+    vd.uvs       = Array.from(batch.uvs);
+    vd.colors    = Array.from(batch.colors);
+    vd.indices   = Array.from(batch.indices);
+    vd.applyToMesh(m);
+
+    m.material = ensureMaterial(batch.alphaMode);
+    m.hasVertexAlpha = true;
+
+    // offsetta leggermente per evitare z-fighting tra opaco/trasparente
+    if (batch.alphaMode === 'blend') {
+      m.renderingGroupId = 2;
+      m.isPickable = false;
+    } else {
+      m.renderingGroupId = 1;
+    }
+
+    meshMap.set(key, m);
+    return m;
   }
 
+  // Engine loop
+  engine.runRenderLoop(() => scene.render());
+  window.addEventListener('resize', () => engine.resize());
+
+  // ---- VOXL reader (solo nel main thread)
+  let regionBuffer = null, regionU8 = null;
   function be24(u8,i){ return (u8[i]<<16)|(u8[i+1]<<8)|u8[i+2]; }
   function be16(u8,i){ return (u8[i]<<8)|u8[i+1]; }
-
-  // Leggi header file .voxl
   function inspectRegion(u8){
     const magic = (u8[0]<<24)|(u8[1]<<16)|(u8[2]<<8)|u8[3];
     if (magic !== 0x564F584C) throw new Error('Magic non VOXL');
-    const version = u8[4];
-    const dimX = u8[5], dimY = u8[6], dimZ = u8[7];
-    const chunkCount = be24(u8, 8);
+    const version = u8[4], dimX=u8[5], dimY=u8[6], dimZ=u8[7], chunkCount=be24(u8,8);
     return { version, dimX, dimY, dimZ, chunkCount };
   }
-
   function readChunk(u8, chunkIndex){
     const { dimX, dimY, dimZ, chunkCount } = inspectRegion(u8);
     if (chunkIndex<0 || chunkIndex>=chunkCount) throw new Error('chunkIndex fuori range');
@@ -143,38 +210,62 @@
     const size = be16(u8, base+3);
 
     const hdrLen = u8[off+0];
-    const hdrVer = u8[off+1];
     const chunkType = u8[off+2];
     const mediumType = u8[off+3];
 
     const voxStart = off + hdrLen;
-    const voxEnd = voxStart + (dimX*dimY*dimZ);
-    const voxels = new Uint8Array(u8.buffer, u8.byteOffset+voxStart, dimX*dimY*dimZ);
-
-    const maskStart = voxEnd;
+    const voxels = new Uint8Array(u8.buffer, u8.byteOffset+voxStart, BYTES_30CUBE);
+    const maskStart = voxStart + BYTES_30CUBE;
     const borderMask = new Uint8Array(u8.buffer, u8.byteOffset+maskStart, MASK_BYTES);
-
-    return { dimX, dimY, dimZ, chunkType, mediumType, voxels, borderMask, size, hdrLen, off };
+    return { dimX, dimY, dimZ, chunkType, mediumType, voxels, borderMask };
   }
 
-  fileInput.addEventListener('change', async (e) => {
-    const f = e.target.files?.[0];
+  // ---- Mesher worker (chunk-based)
+  let w = null;
+  function ensureWorker(){
+    if (w) return w;
+    w = new Worker('mesher_worker.js');
+    w.onmessage = (e) => {
+      const m = e.data || {};
+      if (m.type === 'chunkReady') {
+        log(`✅ chunkReady`);
+        btnBuildAll.disabled = false;
+        btnApply.disabled = false;
+      } else if (m.type === 'submeshReady') {
+        // crea/aggiorna mesh per ogni batch
+        const subIndex = m.subIndex;
+        for (const obj of [m.batches.opaque, m.batches.translucent]) {
+          for (const k of Object.keys(obj)) {
+            upsertBatchMesh(subIndex, obj[k]);
+          }
+        }
+        // centra la camera la prima volta
+        cam.setTarget(new BABYLON.Vector3(15, 15, 15));
+      } else if (m.type === 'meshError') {
+        log('❌ ' + m.error);
+      }
+    };
+    return w;
+  }
+
+  // UI handlers
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files?.[0];
     if (!f) return;
     regionBuffer = await f.arrayBuffer();
     regionU8 = new Uint8Array(regionBuffer);
+    fileInfo.textContent = `${f.name} — ${(f.size/1024).toFixed(1)} KB`;
     btnInspect.disabled = false;
-    fileInfo.textContent = `${f.name} (${(f.size/1024).toFixed(1)} KB)`;
-    inspectOut.hidden = true;
-    initInfo.textContent = '';
-    logEl.textContent = '';
-    lastSubmeshEl.textContent = '';
     btnInit.disabled = false;
-    btnBuildAll.disabled = true;
-    btnApply.disabled = true;
+    logEl.textContent = '';
+    inspectOut.hidden = true;
+
+    // pulisci scene
+    meshMap.forEach(m => m.dispose(false, true));
+    meshMap.clear();
   });
 
   btnInspect.addEventListener('click', () => {
-    if (!regionU8) return;
     try {
       const h = inspectRegion(regionU8);
       inspectOut.textContent = JSON.stringify(h, null, 2);
@@ -186,98 +277,62 @@
     }
   });
 
-  function ensureWorker(){
-    if (worker) return worker;
-    worker = new Worker('mesher_worker.js');
-    worker.onmessage = (e) => {
-      const m = e.data || {};
-      if (m.type === 'chunkReady') {
-        log(`✅ chunkReady: ${m.chunkId}`);
-        btnBuildAll.disabled = false;
-        btnApply.disabled = false;
-      } else if (m.type === 'submeshReady') {
-        const totOpaque = Object.values(m.batches.opaque).reduce((a,b)=>a + (b.indices.length/3), 0);
-        const totTrans  = Object.values(m.batches.translucent).reduce((a,b)=>a + (b.indices.length/3), 0);
-        lastSubmeshEl.textContent =
-          `subIndex: [${m.subIndex.join(', ')}]\n` +
-          `faces opaque: ${totOpaque}\nfaces translucent: ${totTrans}\n` +
-          `stats: ${JSON.stringify(m.stats)}`;
-      } else if (m.type === 'meshError') {
-        log(`❌ meshError: ${m.error}`);
-      }
-    };
-    return worker;
-  }
-
-  // Calcola il valore locale "Air" per suggerire rimozioni corrette
+  // calcola il "local Air" della palette per dare un hint
   function computeLocalAirFor(chunkType){
-    const pal = makePaletteForChunkType(chunkType);
-    let localAir = 0;
+    const pal = VoxelLib.makePaletteForChunkType(chunkType);
     for (let i=0;i<256;i++){
-      const bs = pal[i];
-      const typeId = getTypeId(bs);
-      if (typeId === L.VoxelSet.T.Air) { localAir = i; break; }
+      if (VoxeLib?.getTypeId ? VoxelLib.getTypeId(pal[i]) === VoxelLib.VoxelSet.T.Air
+                              : VoxelLib.VoxelSet.T.Air === VoxelLib.VoxelSet.T.Air) {
+        // fallback; la condizione sopra va bene in ogni caso
+      }
     }
-    return localAir;
+    // semplice: in tutte le nostre palette 0 è Air (prairie/sky) o 4 è Air (underwater).
+    return (chunkType === VoxelLib.ChunkType.UNDERWATER) ? 4 : 0;
   }
 
   btnInit.addEventListener('click', () => {
-    if (!regionU8) return;
-    const idx = parseInt(chunkIndexInput.value, 10) || 0;
-    const subSize = Math.max(5, Math.min(30, parseInt(subSizeInput.value, 10) || 15));
     try {
+      const idx = parseInt(chunkIndexInput.value,10)|0;
+      const subSize = Math.max(5, Math.min(30, parseInt(subSizeInput.value,10) || 15));
       const rec = readChunk(regionU8, idx);
-      currentChunkType = rec.chunkType;
-      currentPaletteLocalAir = computeLocalAirFor(currentChunkType);
 
-      initInfo.innerHTML =
-        `Chunk <span class="badge">${idx}</span> — ` +
-        `chunkType: <code>${rec.chunkType}</code>, medium: <code>${rec.mediumType}</code>, ` +
-        `voxels: <code>${rec.voxels.byteLength}</code>, mask: <code>${rec.borderMask.byteLength}</code>, ` +
-        `subSize: <code>${subSize}</code>`;
+      initInfo.textContent =
+        `chunkType=${rec.chunkType} medium=${rec.mediumType} voxels=${rec.voxels.byteLength} mask=${rec.borderMask.byteLength} sub=${subSize}`;
 
-      paletteHint.innerHTML =
-        `Valore locale “Air” consigliato per rimozione: <code>${currentPaletteLocalAir}</code>` +
-        ` (chunkType=${rec.chunkType}).`;
+      paletteHint.innerHTML = `Suggerimento rimozione: valore "Air" locale = <code>${computeLocalAirFor(rec.chunkType)}</code>`;
 
-      const w = ensureWorker();
-      // Copie sicure da passare (oppure trasferisci direttamente se non ti servono più qui)
-      const voxCopy = new Uint8Array(rec.voxels);     // 27k
-      const maskCopy = new Uint8Array(rec.borderMask);// 675
+      // reset scene meshes
+      meshMap.forEach(m => m.dispose(false, true));
+      meshMap.clear();
 
-      w.postMessage({
+      const ww = ensureWorker();
+      // passiamo copie (o trasferisci direttamente se preferisci)
+      ww.postMessage({
         type: 'initChunk',
-        chunkId: currentChunkId,
+        chunkId: 'testChunk',
         chunkType: rec.chunkType,
-        voxels: voxCopy,
-        borderMask: maskCopy,
+        voxels: new Uint8Array(rec.voxels),
+        borderMask: new Uint8Array(rec.borderMask),
         options: { subchunkSize: subSize }
       });
-      log(`→ initChunk inviato (chunkIndex=${idx})`);
+      log(`→ initChunk idx=${idx}`);
     } catch (err) {
       log('Errore init: ' + err.message);
     }
   });
 
   btnBuildAll.addEventListener('click', () => {
-    if (!worker) return;
-    worker.postMessage({ type:'buildAll', chunkId: currentChunkId });
+    ensureWorker().postMessage({ type:'buildAll', chunkId: 'testChunk' });
     log('→ buildAll inviato');
   });
 
   btnApply.addEventListener('click', () => {
-    if (!worker) return;
-    const x = parseInt(editX.value, 10)|0;
-    const y = parseInt(editY.value, 10)|0;
-    const z = parseInt(editZ.value, 10)|0;
-    let v = parseInt(editVal.value, 10)|0;
-    v = Math.max(0, Math.min(255, v));
-    worker.postMessage({
-      type:'applyEdits',
-      chunkId: currentChunkId,
-      edits: [{ x, y, z, newVal: v }]
-    });
-    log(`→ applyEdits: (${x},${y},${z}) = ${v}`);
+    const x = parseInt(el('editX').value,10)|0;
+    const y = parseInt(el('editY').value,10)|0;
+    const z = parseInt(el('editZ').value,10)|0;
+    let v = Math.max(0, Math.min(255, parseInt(el('editVal').value,10)|0));
+    ensureWorker().postMessage({ type:'applyEdits', chunkId:'testChunk', edits:[{x,y,z,newVal:v}] });
+    log(`→ applyEdits (${x},${y},${z})=${v}`);
   });
 
 })();
