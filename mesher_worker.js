@@ -27,29 +27,35 @@ const DIRS = [
 ];
 
 const QUAD = {
-  [FACE.PX]: { // +X (right)   u→+Z, v→+Y
-    pos:[[1,0,0],[1,1,0],[1,1,1],[1,0,1]],
-    uvs:[[0,0],[0,1],[1,1],[1,0]]
+  // +X (right) — dal tuo: [1,1,1] [1,1,-1] [1,-1,-1] [1,-1,1]
+  [FACE.PX]: {
+    pos: [[1,1,1],[1,1,0],[1,0,0],[1,0,1]],
+    uvs: [[1,1],[0,1],[0,0],[1,0]]
   },
-  [FACE.NX]: { // -X (left)    u→-Z, v→+Y
-    pos:[[0,0,1],[0,1,1],[0,1,0],[0,0,0]],
-    uvs:[[0,0],[0,1],[1,1],[1,0]]
+  // -X (left) — dal tuo: [-1,1,-1] [-1,1,1] [-1,-1,1] [-1,-1,-1]
+  [FACE.NX]: {
+    pos: [[0,1,0],[0,1,1],[0,0,1],[0,0,0]],
+    uvs: [[1,1],[0,1],[0,0],[1,0]]
   },
-  [FACE.PY]: { // +Y (top)     u→+X, v→+Z
-    pos:[[0,1,1],[1,1,1],[1,1,0],[0,1,0]],
-    uvs:[[0,0],[1,0],[1,1],[0,1]]
+  // +Y (top) — dal tuo: [-1,1,-1] [1,1,-1] [1,1,1] [-1,1,1]
+  [FACE.PY]: {
+    pos: [[0,1,0],[1,1,0],[1,1,1],[0,1,1]],
+    uvs: [[0,1],[1,1],[1,0],[0,0]]
   },
-  [FACE.NY]: { // -Y (bottom)  u→+X, v→-Z
-    pos:[[0,0,0],[1,0,0],[1,0,1],[0,0,1]],
-    uvs:[[0,0],[1,0],[1,1],[0,1]]
+  // -Y (bottom) — dal tuo: [-1,-1,1] [1,-1,1] [1,-1,-1] [-1,-1,-1]
+  [FACE.NY]: {
+    pos: [[0,0,1],[1,0,1],[1,0,0],[0,0,0]],
+    uvs: [[0,0],[1,0],[1,1],[0,1]]
   },
-  [FACE.PZ]: { // +Z (front)   u→+X, v→+Y
-    pos:[[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
-    uvs:[[0,0],[1,0],[1,1],[0,1]]
+  // +Z (front) — dal tuo: [-1,1,1] [1,1,1] [1,-1,1] [-1,-1,1]
+  [FACE.PZ]: {
+    pos: [[0,1,1],[1,1,1],[1,0,1],[0,0,1]],
+    uvs: [[0,1],[1,1],[1,0],[0,0]]
   },
-  [FACE.NZ]: { // -Z (back)    u→-X, v→+Y
-    pos:[[0,1,0],[1,1,0],[1,0,0],[0,0,0]],
-    uvs:[[0,0],[1,0],[1,1],[0,1]]
+  // -Z (back) — dal tuo: [1,1,-1] [-1,1,-1] [-1,-1,-1] [1,-1,-1]
+  [FACE.NZ]: {
+    pos: [[1,1,0],[0,1,0],[0,0,0],[1,0,0]],
+    uvs: [[0,1],[1,1],[1,0],[0,0]]
   },
 };
 
@@ -91,23 +97,23 @@ function makeBatch(materialId, alphaMode){
     _indexOffset: 0
   };
 }
-function pushQuad(batch, baseX,baseY,baseZ, face, uvRect, tint, normal){
+function pushQuad(batch, baseX, baseY, baseZ, face, uvRect, tint, normal){
   const q = QUAD[face];
   const i0 = batch._indexOffset;
+
+  const du = (uvRect[2] - uvRect[0]);
+  const dv = (uvRect[3] - uvRect[1]);
+
   for (let i=0;i<4;i++){
     const p = q.pos[i];
     batch.positions.push(baseX+p[0], baseY+p[1], baseZ+p[2]);
     batch.normals.push(normal[0], normal[1], normal[2]);
-    const uv = q.uvs[i];
-    const u = uvRect[0] + uv[0]*(uvRect[2]-uvRect[0]);
-    // Babylon usa v=0 in basso, mentre normalmento si usa v=0 in alto.
-    // Quindi, con l’atlante definito come [u0, v0, u1, v1] “top-left based”,
-    // devi flippare la V al momento del mapping.
-    
-    // const v = uvRect[1] + uv[1]*(uvRect[3]-uvRect[1]);
-    const v = uvRect[3] - uv[1] * (uvRect[3] - uvRect[1]);
 
+    const uv = q.uvs[i];
+    const u = uvRect[0] + uv[0]*du;
+    const v = uvRect[1] + uv[1]*dv;
     batch.uvs.push(u, v);
+
     batch.colors.push(tint[0], tint[1], tint[2], (tint[3] ?? 1));
   }
   batch.indices.push(i0+0, i0+1, i0+2, i0+0, i0+2, i0+3);
