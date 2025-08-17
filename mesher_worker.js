@@ -1,8 +1,11 @@
 // mesher_worker.js — Mesher indipendente (no Babylon). Lavora per sub-chunk 15³.
 // Dipendenze: voxel_types.js (UMD) caricato via importScripts.
 try { importScripts('voxel_types.js'); } catch(_) {}
-const L = self.VoxelLib || (typeof window!=='undefined' ? window.VoxelLib : null);
-if (!L) throw new Error('voxel_types.js non caricato');
+try { importScripts('voxel_materials.js'); } catch(_) {}
+const L  = self.VoxelLib  || (typeof window!=='undefined' ? window.VoxelLib  : null);
+const LM = self.VoxelMaterials || (typeof window!=='undefined' ? window.VoxelMaterials : null);
+if (!L)  throw new Error('voxel_types.js non caricato');
+if (!LM) throw new Error('voxel_materials.js non caricato');
 
 const {
   ChunkType, VoxelSet,
