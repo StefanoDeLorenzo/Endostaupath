@@ -145,6 +145,7 @@
     if (key === 'blend') {
         m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
         m.needDepthPrePass = true;
+        m.backFaceCulling = false;
     } else {
         m.transparencyMode = BABYLON.Material.MATERIAL_OPAQUE;
     }

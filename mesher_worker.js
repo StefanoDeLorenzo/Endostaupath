@@ -82,7 +82,13 @@ function pushQuad(batch, baseX,baseY,baseZ, face, uvRect, tint, normal){
     batch.normals.push(normal[0], normal[1], normal[2]);
     const uv = q.uvs[i];
     const u = uvRect[0] + uv[0]*(uvRect[2]-uvRect[0]);
-    const v = uvRect[1] + uv[1]*(uvRect[3]-uvRect[1]);
+    // Babylon usa v=0 in basso, mentre normalmento si usa v=0 in alto.
+    // Quindi, con l’atlante definito come [u0, v0, u1, v1] “top-left based”,
+    // devi flippare la V al momento del mapping.
+    
+    // const v = uvRect[1] + uv[1]*(uvRect[3]-uvRect[1]);
+    const v = uvRect[3] - uv[1] * (uvRect[3] - uvRect[1]);
+    
     batch.uvs.push(u, v);
     batch.colors.push(tint[0], tint[1], tint[2], (tint[3] ?? 1));
   }
