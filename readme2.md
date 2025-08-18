@@ -1,3 +1,9 @@
+Appunti Palette:
+Tipo di voxel:
+Cubo Pieno, Lastra, Quarto di Blocco, Pilastro, Voxel Vuoto, Scala, Piano Inclinato, Angolo, Arco, Semicilindro, Corrimano, Voxel Trasparente, Cilindro, Cono, Voxel a Connessione Automatica.
+
+
+
 perfetto—ti lascio una “scheda tecnica” sintetica ma precisa del formato che stiamo usando adesso (VOXL v5), con tipi, lunghezze, e layout di **region** e **chunk**. Ho incluso anche il dettaglio della **border mask 1-bit** (ordine facce e indicizzazione), e una nota sulla “variabile materiale nel chunk” (spoiler: non serve).
 
 # VOXL v5 – Struttura file *region*
