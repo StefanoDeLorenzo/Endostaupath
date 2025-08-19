@@ -44,7 +44,7 @@
             }
 
             createCamera() {
-                const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, 60), scene);
+                const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, 60), this.scene);
                 camera.setTarget(new BABYLON.Vector3(60, 0, 60));
                 camera.inertia = 0.5; //0.9 è il default
                 camera.angularSensibility = 2500; // 5000 è il default
