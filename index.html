@@ -48,7 +48,7 @@
                 camera.setTarget(new BABYLON.Vector3(60, 0, 60));
                 camera.inertia = 0.5; //0.9 è il default
                 camera.angularSensibility = 1500; // 5000 è il default
-                camera.speed = 4; // Valore di default: 1
+                camera.speed = 8; // Valore di default: 1
                 camera.attachControl(this.canvas, true);
                 camera.keysUp.push(87);    // W
                 camera.keysDown.push(83);  // S
@@ -252,6 +252,9 @@
                                 //vertexData.normals = normals;
 
                                 vertexData.applyToMesh(mesh);
+                                
+                                mesh.checkCollisions = true; // Abilita le collisioni per questa mesh
+
                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
@@ -266,6 +269,8 @@
                                     this.shadowGenerator.addShadowCaster(mesh);
                                     mesh.receiveShadows = true;
                                 }
+                                //Abilito le Collisioni per le mesh
+                                
                             }
                         }
                         worker.terminate();
