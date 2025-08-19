@@ -99,7 +99,8 @@ myChunk.setVertexIntensity(1, 2, 2, 1);  // Vertice anteriore sinistro superiore
         myChunk.setVoxelType(1, 1, 1, 1); // 1 = tipo di blocco 'roccia'.
        //myChunk.setVoxelType(0, 0, 0, 1)
 
-        const myChunkMesh = generateMesh(myChunk, scene);
+        //const myChunkMesh = generateMesh(myChunk, scene);
+        const myChunkMesh = generateHybridMesh(myChunk, scene);
 
         // Applica un materiale alla mesh per renderla visibile.
         const material = new BABYLON.StandardMaterial("material", scene);
