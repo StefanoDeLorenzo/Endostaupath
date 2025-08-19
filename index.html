@@ -57,7 +57,7 @@
 
                 // Collisioni
                 camera.checkCollisions = true;
-                camera.ellipsoid = new BABYLON.Vector3(0.5, 0.875, 0.5); // Guscio di collisione della telecamera
+                camera.ellipsoid = new BABYLON.Vector3(0.6, 0.875, 0.6); // Guscio di collisione della telecamera
                 camera.ellipsoid.y = 2.9375;;
             }
             
@@ -136,6 +136,7 @@
                         material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
                         material.backFaceCulling = false;
                     }
+                    mesh.material.backFaceCulling = false;
                     this.sceneMaterials[voxelType] = material;
                 }
                 return this.sceneMaterials[voxelType];
@@ -259,7 +260,7 @@
                                 const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
                                 mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
 
-                                mesh.material.backFaceCulling = false;
+                                
 
                                 mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
                                 
