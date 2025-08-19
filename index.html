@@ -49,6 +49,9 @@
                 camera.inertia = 0.5; //0.9 è il default
                 camera.angularSensibility = 1500; // 5000 è il default
                 camera.speed = 8; // Valore di default: 1
+
+                camera.minZ = 0.05; // Valore di default: 0.1, frustum di vista, piano di taglio vicino, più piccolo è più vicino puoi vedere gli oggetti
+
                 camera.attachControl(this.canvas, true);
                 camera.keysUp.push(87);    // W
                 camera.keysDown.push(83);  // S
@@ -136,7 +139,8 @@
                         material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
                         material.backFaceCulling = false;
                     }
-                    material.backFaceCulling = false;
+
+                    //material.backFaceCulling = false; Non serve per le facce non trasparenti
                     this.sceneMaterials[voxelType] = material;
                 }
                 return this.sceneMaterials[voxelType];
