@@ -136,7 +136,7 @@
                         material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
                         material.backFaceCulling = false;
                     }
-                    mesh.material.backFaceCulling = false;
+                    material.backFaceCulling = false;
                     this.sceneMaterials[voxelType] = material;
                 }
                 return this.sceneMaterials[voxelType];
