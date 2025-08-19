@@ -31,7 +31,7 @@ function generateMesh(chunk, scene) {
     for (let x = 0; x < chunk.size; x++) {
         for (let y = 0; y < chunk.size; y++) {
             for (let z = 0; z < chunk.size; z++) {
-                // Posizioni dei vertici del cubo
+                // Posizioni dei vertici del cubo in ordine standard
                 const p = [
                     new BABYLON.Vector3(x, y, z),
                     new BABYLON.Vector3(x + 1, y, z),
@@ -43,7 +43,7 @@ function generateMesh(chunk, scene) {
                     new BABYLON.Vector3(x, y + 1, z + 1)
                 ];
 
-                // Valori di intensità degli 8 vertici.
+                // Valori di intensità degli 8 vertici, nello stesso ordine
                 const val = [
                     chunk.getVertexIntensity(x, y, z),
                     chunk.getVertexIntensity(x + 1, y, z),
@@ -92,15 +92,13 @@ function generateMesh(chunk, scene) {
                     const v2 = vertList[triIndices[i + 1]];
                     const v3 = vertList[triIndices[i + 2]];
 
-                    // Ottieni il numero totale di vertici già creati.
                     const currentVertexCount = positions.length / 3;
 
-                    // Aggiungi i vertici alla lista di posizioni.
                     positions.push(v1.x, v1.y, v1.z);
                     positions.push(v2.x, v2.y, v2.z);
                     positions.push(v3.x, v3.y, v3.z);
 
-                    // Aggiungi gli indici per definire il triangolo.
+                    // Qui è la CORREZIONE: Invertiamo l'ordine degli indici per rendere le facce visibili.
                     indices.push(currentVertexCount, currentVertexCount + 2, currentVertexCount + 1);
                 }
             }
@@ -113,7 +111,6 @@ function generateMesh(chunk, scene) {
     vertexData.positions = positions;
     vertexData.indices = indices;
     
-    // Calcola le normali automaticamente
     BABYLON.VertexData.ComputeNormals(vertexData.positions, vertexData.indices, normals);
     vertexData.normals = normals;
 

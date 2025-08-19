@@ -29,7 +29,7 @@
         // Funzione per creare la telecamera
         function createCamera(scene) {
             const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, 60), this.scene);
-                camera.setTarget(new BABYLON.Vector3(60, 0, 60));
+                camera.setTarget(new BABYLON.Vector3(7.5, 7.5, 7.5));
                 camera.inertia = 0.9; //0.9 è il default
                 camera.angularSensibility = 5000; // 5000 è il default
                 camera.attachControl(this.canvas, true);
@@ -78,6 +78,26 @@
                 }
             }
         }
+        
+        let vertexArray = myChunk.getVoxelVerticesData(1,1,1);
+
+// La parte inferiore del cubo è "solida" (intensità > 4)
+myChunk.setVertexIntensity(1, 1, 1, 7);  // Vertice posteriore sinistro
+myChunk.setVertexIntensity(2, 1, 1, 7);  // Vertice posteriore destro
+myChunk.setVertexIntensity(2, 1, 2, 7);  // Vertice anteriore destro
+myChunk.setVertexIntensity(1, 1, 2, 7);  // Vertice anteriore sinistro
+
+// La parte superiore del cubo è inclinata.
+// L'altezza è rappresentata dall'intensità.
+// I vertici sul lato destro (x=2) hanno un'intensità più alta, creando un'inclinazione.
+myChunk.setVertexIntensity(1, 2, 1, 1);  // Vertice posteriore sinistro superiore (più basso)
+myChunk.setVertexIntensity(2, 2, 1, 7);  // Vertice posteriore destro superiore (più alto)
+myChunk.setVertexIntensity(2, 2, 2, 7);  // Vertice anteriore destro superiore (più alto)
+myChunk.setVertexIntensity(1, 2, 2, 1);  // Vertice anteriore sinistro superiore (più basso)
+
+         // 7 = alta intensità (solido).
+        myChunk.setVoxelType(1, 1, 1, 1); // 1 = tipo di blocco 'roccia'.
+       //myChunk.setVoxelType(0, 0, 0, 1)
 
         const myChunkMesh = generateMesh(myChunk, scene);
 

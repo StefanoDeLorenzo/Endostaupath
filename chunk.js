@@ -130,6 +130,39 @@ class Chunk {
     }
 
     /**
+     * Restituisce i dati completi (posizione e intensità) degli 8 vertici
+     * che definiscono un voxel.
+     * @param {number} vx - La coordinata x del voxel.
+     * @param {number} vy - La coordinata y del voxel.
+     * @param {number} vz - La coordinata z del voxel.
+     * @returns {Array<{x: number, y: number, z: number, intensity: number}>} Un array di 8 oggetti.
+     */
+    getVoxelVerticesData(vx, vy, vz) {
+        const verticesData = [];
+        const positions = [
+            [vx, vy, vz],
+            [vx + 1, vy, vz],
+            [vx + 1, vy, vz + 1],
+            [vx, vy, vz + 1],
+            [vx, vy + 1, vz],
+            [vx + 1, vy + 1, vz],
+            [vx + 1, vy + 1, vz + 1],
+            [vx, vy + 1, vz + 1]
+        ];
+
+        for (let i = 0; i < positions.length; i++) {
+            const x = positions[i][0];
+            const y = positions[i][1];
+            const z = positions[i][2];
+            const intensity = this.getVertexIntensity(x, y, z);
+            
+            verticesData.push({ x, y, z, intensity });
+        }
+
+        return verticesData;
+    }
+
+    /**
      * Prepara il chunk per il trasferimento tra Web Worker e thread principale.
      * @returns {object} Un oggetto con dati trasferibili.
      */
