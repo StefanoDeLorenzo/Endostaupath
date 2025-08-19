@@ -33,6 +33,10 @@
                 this.loadedChunks = new Set();
                 this.loadedRegions = new Set();
                 this.regionsData = new Map();
+
+                // Abilita le collisioni a livello di scena
+                this.scene.collisionsEnabled = true;
+
                 this.initializeScene();
             }
 
@@ -61,7 +65,7 @@
                 // Collisioni
                 camera.checkCollisions = true;
                 camera.ellipsoid = new BABYLON.Vector3(0.6, 0.875, 0.6); // Guscio di collisione della telecamera
-                camera.ellipsoid.y = 2.9375;;
+                camera.ellipsoid.y = 2.9375; // Altezza della telecamera
             }
             
             createAmbientLight() {
