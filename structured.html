@@ -200,105 +200,97 @@
                 }
             }
             
+            // Versione adattata per worker_structured.js (ES module)
             async loadChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                if (this.loadedChunks.has(chunkKey)) {
-                    return;
-                }
-                
-                await this.fetchAndStoreRegionData(regionX, regionY, regionZ);
-                
-                const chunkData = this.getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
+            const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+            if (this.loadedChunks.has(chunkKey)) return;
 
-                if (chunkData === null) {
-                    this.loadedChunks.add(chunkKey);
-                    return;
-                }
-                
-                const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-                const worker = new Worker('worker.js');
-                this.workers.set(workerId, worker);
-                
-                worker.onmessage = (event) => {
-                    const { type, meshDataByVoxelType, voxelOpacity } = event.data;
-                    
-                    this.loadedChunks.add(chunkKey);
-                    
-                    if (type === 'meshGenerated' && meshDataByVoxelType) {
-                        const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
-                        const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
-                        const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
-                        for (const voxelType in meshDataByVoxelType) {
-                            const meshData = meshDataByVoxelType[voxelType];
-                            if (meshData.positions.length > 0) {
-                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
-                                const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
-                                const mesh = new BABYLON.Mesh(meshName, this.scene);
-                                const vertexData = new BABYLON.VertexData();
-                                
-                                //Object.assign(vertexData, meshData);
+            await this.fetchAndStoreRegionData(regionX, regionY, regionZ);
 
-                                vertexData.positions = meshData.positions;
-                                vertexData.indices = meshData.indices;
-                                vertexData.colors = meshData.colors;
-                                vertexData.normals = meshData.normals;
-                                vertexData.uvs = meshData.uvs; // Aggiungi questa riga
-                                
-                                
-                                // Ricalcola le normali basandosi sulle posizioni dei vertici.
-                                // Il parametro `true` indica di sovrascrivere le normali esistenti.
-                                // Se funzione devo rimuovere da worker.js la riga che calcola le normali
-                                // perchè altrimenti si calcolano due volte.
-                                // Crea un array per le normali
-                                //const normals = [];
-                                
-                                // Chiama il metodo statico computeNormals della classe
-                                // e passagli i dati della mesh
-                                //BABYLON.VertexData.ComputeNormals(
-                                //    vertexData.positions,
-                                //    vertexData.indices,
-                                //    normals
-                                //); 
-                                
-                                // Aggiungi le normali calcolate all'oggetto vertexData
-                                //vertexData.normals = normals;
-
-                                vertexData.applyToMesh(mesh);
-                                
-                                mesh.checkCollisions = true; // Abilita le collisioni per questa mesh
-
-                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
-                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
-
-                                
-
-                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-                                
-                                // Aggiungi la mesh come proiettore di ombre
-                                if (voxelOpacity[voxelType] === 'opaque') {
-                                    // Questa riga è commentata perchè attivarla richiede molto più memoria
-                                    // e potrebbe causare problemi di performance con molte mesh
-                                    // Una scheda video molto potente non dovrebbe avere problemi
-                                    // ma su schede video più deboli potrebbe causare crash o rallentamenti
-
-                                    this.shadowGenerator.addShadowCaster(mesh);
-                                    mesh.receiveShadows = true;
-                                }
-                                //Abilito le Collisioni per le mesh
-                                
-                            }
-                        }
-                        worker.terminate();
-                        this.workers.delete(workerId);
-                    }
-                };
-                
-                worker.postMessage({
-                    type: 'generateMeshFromChunk',
-                    chunkData: chunkData.buffer,
-                    chunkX, chunkY, chunkZ
-                }, [chunkData.buffer]);
+            const chunkData = this.getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
+            if (chunkData === null) {
+                this.loadedChunks.add(chunkKey);
+                return;
             }
+
+            // Copia difensiva: evitiamo di trasferire il buffer dell'intera regione
+            const vox = (chunkData instanceof Uint8Array) ? chunkData.slice() : new Uint8Array(chunkData);
+
+            const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+            const worker = new Worker('./src/worker/worker_structured.js', { type: 'module' });
+            this.workers.set(workerId, worker);
+
+            // Calcolo world position come prima
+            const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
+            const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
+            const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
+
+            // Handler messaggi
+            worker.onmessage = (event) => {
+                const msg = event.data;
+
+                if (msg?.type === 'INIT_OK') {
+                // Dopo l'ACK, invia il chunk (TRANSFER della copia)
+                worker.postMessage({
+                    type: 'BUILD_CHUNK',
+                    key: { rx: regionX, ry: regionY, rz: regionZ, cx: chunkX, cy: chunkY, cz: chunkZ },
+                    voxels: vox
+                }, [vox.buffer]);
+                return;
+                }
+
+                // Fine lavoro: crea la mesh unica per il chunk
+                if (msg?.type === 'MESH_READY') {
+                const { positions, normals, uvs, indices /*, counts, key */ } = msg;
+
+                this.loadedChunks.add(chunkKey);
+
+                if (positions && positions.length) {
+                    const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                    const mesh = new BABYLON.Mesh(meshName, this.scene);
+                    const vertexData = new BABYLON.VertexData();
+
+                    vertexData.positions = positions;
+                    vertexData.indices   = indices;
+                    vertexData.normals   = normals;
+                    vertexData.uvs       = uvs;
+                    // Niente colors dal worker strutturato (se servono li calcoliamo dopo)
+                    vertexData.applyToMesh(mesh);
+
+                    mesh.checkCollisions = true;
+                    // Materiale “opaco” di default (Dirt=1). In seguito possiamo differenziare.
+                    mesh.material = this.getOrCreateMaterial(1, false, 1.0);
+
+                    mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+
+                    // Ombre opzionali come nel tuo codice
+                    this.shadowGenerator.addShadowCaster(mesh);
+                    mesh.receiveShadows = true;
+                }
+
+                worker.terminate();
+                this.workers.delete(workerId);
+                return;
+                }
+
+                if (msg?.type === 'MESH_ERROR') {
+                console.error('[worker] MESH_ERROR', msg.key, msg.error);
+                this.loadedChunks.add(chunkKey);
+                worker.terminate();
+                this.workers.delete(workerId);
+                return;
+                }
+            };
+
+            // Inizializza il worker (una volta per worker)
+            worker.postMessage({
+                type: 'INIT',
+                sizes: { shellSize: 32, logicalSize: 30, shellMargin: 1 }, // 32^3 con shell → 30^3 logico
+                classify: { opaque: [1, 3, 4] }, // Dirt, Grass, Rock opachi
+                uv: { atlasCols: 1 }             // niente atlas complesso per ora
+            });
+            }
+
             
             // Metodo per il caricamento iniziale di un'intera regione
             async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
