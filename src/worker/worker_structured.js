@@ -1,262 +1,202 @@
-// worker_structured_compat.js  —  Protocollo legacy:
-// IN : { type:'generateMeshFromChunk', chunkData:ArrayBuffer, chunkX, chunkY, chunkZ }
-// OUT: { type:'meshGenerated', meshDataByVoxelType:{[type]:{positions,indices,colors,normals,uvs}}, voxelOpacity:{[type]:'opaque'|'transparent'} }
+// worker.js - Worker per la generazione della mesh da un singolo chunk
 
-// --- Parametri world/chunk (legacy 32^3 con shell -> 30^3 logico) ---
-const SHELL_SIZE   = 32;
-const LOGICAL_SIZE = 30;
-const SHELL_MARGIN = 1;
-
-// --- Tipi voxel (come nel tuo generator.js) ---
-const VoxelTypes = { Air:0, Dirt:1, Cloud:2, Grass:3, Rock:4 };
-
-// --- Classificazione materiali ---
-const TRANSPARENT_SET = new Set([VoxelTypes.Cloud]);                  // (estendibile)
-const OPAQUE_SET      = new Set([VoxelTypes.Dirt, VoxelTypes.Grass, VoxelTypes.Rock]);
-
-// Mappa testuale richiesta dal tuo main per scegliere il materiale
-const VOXEL_OPACITY_TEXT = {
-  [VoxelTypes.Air]:   'transparent',
-  [VoxelTypes.Cloud]: 'transparent',
-  [VoxelTypes.Dirt]:  'opaque',
-  [VoxelTypes.Grass]: 'opaque',
-  [VoxelTypes.Rock]:  'opaque',
+const CHUNK_SIZE = 30;
+const CHUNK_SIZE_SHELL = 32;
+const VOXEL_TYPES = {
+    Air: 0,
+    Dirt: 1,
+    Cloud: 2,
+    Grass: 3,
+    Rock: 4,
+    Lava: 5,
+    Water: 6,
+    Acid: 7
 };
 
-// --- Winding / sistema di coordinate ---
-// Babylon default: left-handed, front face = CW
-const LEFT_HANDED = true;
-let   FRONT_IS_CW = false; // se vedi facce invertite su un asse, metti false
+// ============================================================================
+// # CONFIGURAZIONE ALGORITMO DI MESHING
+// ============================================================================
+const MESHING_ALGORITHM = 'VOXEL'; // O 'GREEDY'
 
-// --- Helpers di base ---
-function idx(x,y,z,S){ return x + y*S + z*S*S; }
-function isAir(t){ return t === VoxelTypes.Air; }
-function isTransparent(t){ return TRANSPARENT_SET.has(t); }
-function isOpaque(t){ return OPAQUE_SET.has(t); }
+const VoxelColors = {
+    [VOXEL_TYPES.Dirt]: [0.55, 0.45, 0.25, 1.0], // Marrone
+    [VOXEL_TYPES.Grass]: [0.2, 0.6, 0.2, 1.0], // Verde
+    [VOXEL_TYPES.Rock]: [0.4, 0.4, 0.4, 1.0], // Grigio
+    [VOXEL_TYPES.Cloud]: [1.0, 1.0, 1.0, 0.4], // Bianco traslucido
+    [VOXEL_TYPES.Lava]: [0.9, 0.3, 0.0, 0.7],  // Lava semi-opaca
+    [VOXEL_TYPES.Water]: [0.2, 0.5, 1.0, 0.5], // Acqua trasparente
+    [VOXEL_TYPES.Acid]: [0.6, 1.0, 0.2, 0.6],  // Acido
+    [VOXEL_TYPES.Air]: [0.0, 0.0, 0.0, 0.0] // Trasparente
+};
 
-// Regola di culling (come richiesto):
-// - verso Air -> true
-// - verso Trasparente -> true se (trasparente && tipo diverso)
-// - opaco-trasparente -> SOLO lato opaco (questa funzione viene chiamata dal lato "corrente")
-// - opaco-opaco -> false
-function shouldEmitFace(currType, neighType) {
-  if (isAir(neighType)) return true;
+const VoxelOpacity = {
+    [VOXEL_TYPES.Air]: 'transparent',
+    [VOXEL_TYPES.Cloud]: 'transparent',
+    [VOXEL_TYPES.Lava]: 'transparent',
+    [VOXEL_TYPES.Water]: 'transparent',
+    [VOXEL_TYPES.Acid]: 'transparent',
+    [VOXEL_TYPES.Dirt]: 'opaque',
+    [VOXEL_TYPES.Grass]: 'opaque',
+    [VOXEL_TYPES.Rock]: 'opaque'
+};
 
-  const currTransp = isTransparent(currType);
-  const neighTransp = isTransparent(neighType);
+const cubeFaceData = [
+    { positions: [1,1,1, 1,1,-1, 1,-1,-1, 1,-1,1], normals: [1,0,0, 1,0,0, 1,0,0, 1,0,0], uvs: [1, 1, 0, 1, 0, 0, 1, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,-1, -1,1,1, -1,-1,1, -1,-1,-1], normals: [-1,0,0, -1,0,0, -1,0,0, -1,0,0], uvs: [1, 1, 0, 1, 0, 0, 1, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,-1, 1,1,-1, 1,1,1, -1,1,1], normals: [0,1,0, 0,1,0, 0,1,0, 0,1,0], uvs: [0, 1, 1, 1, 1, 0, 0, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,-1,1, 1,-1,1, 1,-1,-1, -1,-1,-1], normals: [0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0], uvs: [0, 0, 1, 0, 1, 1, 0, 1], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [-1,1,1, 1,1,1, 1,-1,1, -1,-1,1], normals: [0,0,1, 0,0,1, 0,0,1, 0,0,1], uvs: [0, 1, 1, 1, 1, 0, 0, 0], indices: [0,1,2, 0,2,3], isBackFace: false },
+    { positions: [1,1,-1, -1,1,-1, -1,-1,-1, 1,-1,-1], normals: [0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1], uvs: [0, 1, 1, 1, 1, 0, 0, 0], indices: [0,1,2, 0,2,3], isBackFace: false }
+];
 
-  if (neighTransp) {
-    if (currTransp) {
-      // trasparente vs trasparente → disegna SOLO se tipo diverso
-      return currType !== neighType;
-    } else {
-      // opaco contro trasparente → emette il lato opaco (qui siamo sul lato opaco)
-      return true;
-    }
-  }
-
-  // qui: vicino opaco
-  if (currTransp) {
-    // trasparente contro opaco → NON emettere (lo farà l’opaco)
-    return false;
-  }
-
-  // opaco vs opaco → culled
-  return false;
-}
-
-// Indici per i due triangoli di un quad, baseIndex = primo dei 4 vertici
-function writeIndices(buf, baseIndex) {
-  // CCW: 0-1-2, 0-2-3
-  buf.indices[buf._iCursor++] = baseIndex+0;
-  buf.indices[buf._iCursor++] = baseIndex+1;
-  buf.indices[buf._iCursor++] = baseIndex+2;
-  buf.indices[buf._iCursor++] = baseIndex+0;
-  buf.indices[buf._iCursor++] = baseIndex+2;
-  buf.indices[buf._iCursor++] = baseIndex+3;
-}
-
-// Emetti un quad per una faccia del voxel (lx,ly,lz in coordinate LOGICHE 0..L-1)
-function emitQuad(buf, lx, ly, lz, dir /*0..5*/, alpha /*0..1*/) {
-  const x0=lx,   x1=lx+1;
-  const y0=ly,   y1=ly+1;
-  const z0=lz,   z1=lz+1;
-
-  // 6 direzioni: +X,-X,+Y,-Y,+Z,-Z
-  // Ogni voce: 4 posizioni [x,y,z] ordinate per ottenere il winding corretto
-  let verts, nx=0, ny=0, nz=0;
-  switch (dir) {
-    case 0: // +X
-      nx=+1; verts=[[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]]; break;
-    case 1: // -X
-      nx=-1; verts=[[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],[x0,y0,z0]]; break;
-    case 2: // +Y
-      ny=+1; verts=[[x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0]]; break;
-    case 3: // -Y
-      ny=-1; verts=[[x0,y0,z1],[x0,y0,z0],[x1,y0,z0],[x1,y0,z1]]; break;
-    case 4: // +Z
-      nz=+1; verts=[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]; break;
-    case 5: // -Z
-      nz=-1; verts=[[x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0]]; break;
-  }
-
-  const baseIndex = buf._vCursor / 3;
-
-  // 4 vertici: pos, norm, uv, color
-  const UV = [[0,0],[1,0],[1,1],[0,1]];
-  for (let k=0;k<4;k++) {
-    const [px,py,pz] = verts[k];
-
-    buf.positions[buf._vCursor+0]=px;
-    buf.positions[buf._vCursor+1]=py;
-    buf.positions[buf._vCursor+2]=pz;
-    buf.normals[buf._vCursor+0]=nx;
-    buf.normals[buf._vCursor+1]=ny;
-    buf.normals[buf._vCursor+2]=nz;
-    buf._vCursor += 3;
-
-    const uvOff = (baseIndex + k)*2;
-    buf.uvs[uvOff+0]=UV[k][0]; buf.uvs[uvOff+1]=UV[k][1];
-
-    const cOff = (baseIndex + k)*4;
-    buf.colors[cOff+0]=1; buf.colors[cOff+1]=1; buf.colors[cOff+2]=1; buf.colors[cOff+3]=alpha;
-  }
-
-  writeIndices(buf, baseIndex);
-}
-
-function allocBuffersForFaces(faceN) {
-  const verts = faceN * 4;
-  const tris  = faceN * 2;
-  return {
-    positions: new Float32Array(verts*3),
-    normals:   new Float32Array(verts*3),
-    uvs:       new Float32Array(verts*2),
-    colors:    new Float32Array(verts*4),
-    indices:   (verts-1)<=65535 ? new Uint16Array(tris*3) : new Uint32Array(tris*3),
-    _vCursor: 0,
-    _iCursor: 0
-  };
-}
-
-// --- Mesher per-materiale (naive) con la regola di culling corretta ---
-function meshPerMaterial(voxels /*Uint8Array len 32^3*/) {
-  const S=SHELL_SIZE, L=LOGICAL_SIZE, M=SHELL_MARGIN;
-  const xMin=M, xMax=M+L-1, yMin=M, yMax=M+L-1, zMin=M, zMax=M+L-1;
-
-  // Pass 1: conta facce per tipo
-  const faceCount = new Uint32Array(256);
-
-  for (let z=zMin; z<=zMax; z++) {
-    for (let y=yMin; y<=yMax; y++) {
-      for (let x=xMin; x<=xMax; x++) {
-        const T = voxels[idx(x,y,z,S)];
-        if (isAir(T)) continue; // aria non emette mai
-
-        if (shouldEmitFace(T, voxels[idx(x+1,y,z,S)])) faceCount[T]++;
-        if (shouldEmitFace(T, voxels[idx(x-1,y,z,S)])) faceCount[T]++;
-        if (shouldEmitFace(T, voxels[idx(x,y+1,z,S)])) faceCount[T]++;
-        if (shouldEmitFace(T, voxels[idx(x,y-1,z,S)])) faceCount[T]++;
-        if (shouldEmitFace(T, voxels[idx(x,y,z+1,S)])) faceCount[T]++;
-        if (shouldEmitFace(T, voxels[idx(x,y,z-1,S)])) faceCount[T]++;
-      }
-    }
-  }
-
-  // Alloc per tipo
-  const byType = Object.create(null);
-  for (let t=0; t<256; t++) {
-    const f = faceCount[t];
-    if (!f) continue;
-    byType[t] = allocBuffersForFaces(f);
-  }
-  if (Object.keys(byType).length === 0) {
-    return { byType: {}, voxelOpacity: {} };
-  }
-
-  // Pass 2: emetti
-  for (let z=zMin; z<=zMax; z++) {
-    for (let y=yMin; y<=yMax; y++) {
-      for (let x=xMin; x<=xMax; x++) {
-        const T = voxels[idx(x,y,z,S)];
-        if (isAir(T)) continue;
-
-        const lx = x - M, ly = y - M, lz = z - M;
-        const buf = byType[T];
-        if (!buf) continue;
-
-        // alpha per materiale: opachi 1.0, trasparenti <1 (es. Cloud 0.6)
-        const alpha = isTransparent(T) ? 0.6 : 1.0;
-
-        if (shouldEmitFace(T, voxels[idx(x+1,y,z,S)])) emitQuad(buf,lx,ly,lz,0,alpha); // +X
-        if (shouldEmitFace(T, voxels[idx(x-1,y,z,S)])) emitQuad(buf,lx,ly,lz,1,alpha); // -X
-        if (shouldEmitFace(T, voxels[idx(x,y+1,z,S)])) emitQuad(buf,lx,ly,lz,2,alpha); // +Y
-        if (shouldEmitFace(T, voxels[idx(x,y-1,z,S)])) emitQuad(buf,lx,ly,lz,3,alpha); // -Y
-        if (shouldEmitFace(T, voxels[idx(x,y,z+1,S)])) emitQuad(buf,lx,ly,lz,4,alpha); // +Z
-        if (shouldEmitFace(T, voxels[idx(x,y,z-1,S)])) emitQuad(buf,lx,ly,lz,5,alpha); // -Z
-      }
-    }
-  }
-
-  // pulizia cursori
-  for (const k of Object.keys(byType)) {
-    delete byType[k]._vCursor;
-    delete byType[k]._iCursor;
-  }
-
-  // Opacità testuale per i tipi presenti
-  const voxelOpacity = {};
-  for (const k of Object.keys(byType)) {
-    const t = k|0;
-    voxelOpacity[k] = VOXEL_OPACITY_TEXT[t] || 'opaque';
-  }
-
-  return { byType, voxelOpacity };
-}
-
-// --- Messaggi legacy ---
-self.onmessage = (ev) => {
-  const msg = ev.data;
-  if (!msg || msg.type !== 'generateMeshFromChunk') return;
-
-  try {
-    const arr = msg.chunkData instanceof ArrayBuffer ? new Uint8Array(msg.chunkData)
-              : (msg.chunkData instanceof Uint8Array ? msg.chunkData
-              : new Uint8Array(msg.chunkData));
-
-    if (arr.length !== SHELL_SIZE*SHELL_SIZE*SHELL_SIZE) {
-      throw new Error(`chunkData length ${arr.length} != ${SHELL_SIZE**3}`);
-    }
-
-    const { byType, voxelOpacity } = meshPerMaterial(arr);
-
+// # Funzione di Meshing Voxel per Voxel
+function generateMeshForChunk_Voxel(chunkData) {
     const meshDataByVoxelType = {};
-    const transfers = [];
-    for (const tStr of Object.keys(byType)) {
-      const buf = byType[tStr];
-      meshDataByVoxelType[tStr] = {
-        positions: buf.positions,
-        indices:   buf.indices,
-        colors:    buf.colors,
-        normals:   buf.normals,
-        uvs:       buf.uvs,
-      };
-      transfers.push(
-        buf.positions.buffer,
-        buf.indices.buffer,
-        buf.colors.buffer,
-        buf.normals.buffer,
-        buf.uvs.buffer
-      );
+
+    function getMeshData(voxelType) {
+        if (!meshDataByVoxelType[voxelType]) {
+            meshDataByVoxelType[voxelType] = {
+                positions: [],
+                normals: [],
+                indices: [],
+                colors: [],
+                uvs: [], // UVs per le texture
+                indexOffset: 0
+            };
+        }
+        return meshDataByVoxelType[voxelType];
+    }
+    
+    for (let x = 1; x < CHUNK_SIZE_SHELL - 1; x++) {
+        for (let y = 1; y < CHUNK_SIZE_SHELL - 1; y++) {
+            for (let z = 1; z < CHUNK_SIZE_SHELL - 1; z++) {
+                const voxel = chunkData[x + CHUNK_SIZE_SHELL * (y + CHUNK_SIZE_SHELL * z)];
+                
+                if (voxel === VOXEL_TYPES.Air) {
+                    continue;
+                }
+
+                const currentMeshData = getMeshData(voxel);
+
+                const neighborOffsets = [
+                    [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+                ];
+
+                neighborOffsets.forEach((offset, faceIndex) => {
+                    const [ox, oy, oz] = offset;
+                    const neighborVoxel = chunkData[(x + ox) + CHUNK_SIZE_SHELL * ((y + oy) + CHUNK_SIZE_SHELL * (z + oz))];
+                    const isNeighborTransparent = (VoxelOpacity[neighborVoxel] === 'transparent');
+                    const isVoxelTransparent = (VoxelOpacity[voxel] === 'transparent');
+
+                    const shouldDrawFace = (isVoxelTransparent && neighborVoxel === VOXEL_TYPES.Air) || (!isVoxelTransparent && (neighborVoxel === VOXEL_TYPES.Air || isNeighborTransparent));
+
+                    if (shouldDrawFace) {
+                        const faceData = cubeFaceData[faceIndex];
+                        const voxelColor = VoxelColors[voxel];
+
+                        for (let i = 0; i < faceData.positions.length; i += 3) {
+                            currentMeshData.positions.push((x - 1) + faceData.positions[i] * 0.5);
+                            currentMeshData.positions.push((y - 1) + faceData.positions[i + 1] * 0.5);
+                            currentMeshData.positions.push((z - 1) + faceData.positions[i + 2] * 0.5);
+                        }
+                        
+                        // Assicurati che le normali siano rivolte verso l'esterno
+                        if (faceData.isBackFace) {
+                            for (let i = 0; i < faceData.normals.length; i += 3) {
+                                currentMeshData.normals.push(-faceData.normals[i], -faceData.normals[i + 1], -faceData.normals[i + 2]);
+                            }
+                        } else {
+                            currentMeshData.normals.push(...faceData.normals);
+                        }
+
+                        // Inverti gli indici se necessario per la normale
+                        if (faceData.isBackFace) {
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 1);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 3);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                        } else {
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 1);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 0);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 2);
+                            currentMeshData.indices.push(currentMeshData.indexOffset + 3);
+                        }
+
+                        currentMeshData.indexOffset += 4;
+                        
+                        for (let i = 0; i < 4; i++) {
+                             currentMeshData.colors.push(...voxelColor);
+                        }
+                        currentMeshData.uvs.push(...faceData.uvs);
+                    }
+                });
+            }
+        }
+    }
+    
+    const finalMeshData = {};
+    for (const voxelType in meshDataByVoxelType) {
+        finalMeshData[voxelType] = {
+            positions: new Float32Array(meshDataByVoxelType[voxelType].positions),
+            normals: new Float32Array(meshDataByVoxelType[voxelType].normals),
+            indices: new Uint16Array(meshDataByVoxelType[voxelType].indices),
+            colors: new Float32Array(meshDataByVoxelType[voxelType].colors),
+            uvs: new Float32Array(meshDataByVoxelType[voxelType].uvs)
+        };
     }
 
-    self.postMessage({
-      type: 'meshGenerated',
-      meshDataByVoxelType,
-      voxelOpacity
-    }, transfers);
+    return finalMeshData;
+}
 
-  } catch (err) {
-    self.postMessage({ type: 'error', message: String(err && err.message || err) });
-  }
+self.onmessage = async (event) => {
+    const { type, chunkData, chunkX, chunkY, chunkZ } = event.data;
+
+    if (type === 'generateMeshFromChunk') {
+        try {
+            console.log(`Worker: Avvio generazione mesh per il chunk (${chunkX}, ${chunkY}, ${chunkZ})...`);
+
+            let meshData;
+            switch (MESHING_ALGORITHM) {
+                case 'VOXEL':
+                    meshData = generateMeshForChunk_Voxel(new Uint8Array(chunkData));
+                    break;
+                case 'GREEDY':
+                    console.error('L\'algoritmo GREEDY non supporta ancora la separazione per materiale.');
+                    return;
+                default:
+                    console.error('Algoritmo di meshing non valido.');
+                    return;
+            }
+            
+            console.log(`Worker: Generazione mesh completata. Invio i dati al thread principale.`);
+            
+            const transferableObjects = [];
+            for (const voxelType in meshData) {
+                transferableObjects.push(
+                    meshData[voxelType].positions.buffer,
+                    meshData[voxelType].normals.buffer,
+                    meshData[voxelType].indices.buffer,
+                    meshData[voxelType].colors.buffer
+                );
+            }
+
+            self.postMessage({
+                type: 'meshGenerated',
+                chunkX, chunkY, chunkZ,
+                meshDataByVoxelType: meshData,
+                voxelOpacity: VoxelOpacity
+            }, transferableObjects);
+
+        } catch (error) {
+            console.error(`Worker: Errore critico durante la generazione della mesh del chunk.`, error);
+            self.postMessage({
+                type: 'error',
+                message: error.message
+            });
+        }
+    }
 };
