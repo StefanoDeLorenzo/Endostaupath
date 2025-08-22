@@ -1,89 +1,100 @@
 // src/worker/worker_structured.js
-// WebWorker (ES module) — orchestratore del meshing naive.
-// Protocollo:
-//   INIT  -> { type:'INIT', sizes:{shellSize, logicalSize, shellMargin}, classify:{opaque:number[]}, uv?:{atlasCols, atlasRows, tileForType} }
-//   BUILD_CHUNK -> { type:'BUILD_CHUNK', key:{rx,ry,rz,cx,cy,cz}?, voxels:Uint8Array }
-//   MESH_READY  <- { type:'MESH_READY', key, counts, positions, normals, uvs, indices }  (con transferables)
+// WebWorker (ES module) — compatibile con il tuo protocollo legacy:
+// IN:  { type:'generateMeshFromChunk', chunkData:ArrayBuffer, chunkX, chunkY, chunkZ }
+// OUT: { type:'meshGenerated', meshDataByVoxelType: { [voxelType]: {positions,indices,colors,normals,uvs} }, voxelOpacity: { [voxelType]:'opaque'|'transparent' } }
 
-import { makeOpaqueMap } from '../mesh/common.js';
-import { meshNaive } from '../mesh/mesher_naive.js';
+import { makeOpacityRank } from '../mesh/common.js';
+import { meshNaivePerMaterial } from '../mesh/mesher_naive.js';
 
-let SIZES = { shellSize: 32, logicalSize: 30, shellMargin: 1 };
-let OPAQUE_MAP = (() => {
-  const m = new Uint8Array(256);
-  // Default: opachi = Dirt(1), Grass(3), Rock(4) — come nel tuo generator
-  m[1] = 1; m[3] = 1; m[4] = 1;
-  return m;
-})();
-let UVCFG = { atlasCols: 1, atlasRows: 1, tileForType: { 0: 0 } }; // opzionale
+// === Costanti di progetto (come nel tuo generator.js) ===
+const SHELL_SIZE   = 32;
+const LOGICAL_SIZE = 30;
+const SHELL_MARGIN = 1;
 
+// Tipi voxel
+const VoxelTypes = { Air:0, Dirt:1, Cloud:2, Grass:3, Rock:4 };
+
+// Rank di opacità (0 aria, 1 trasparente, 2 opaco)
+const OPACITY_RANK = makeOpacityRank({
+  transparent: [VoxelTypes.Cloud],
+  opaque: [VoxelTypes.Dirt, VoxelTypes.Grass, VoxelTypes.Rock],
+});
+
+// Per il main (stringhe richieste dal tuo codice)
+const VOXEL_OPACITY_TEXT = {
+  [VoxelTypes.Air]:   'transparent',
+  [VoxelTypes.Cloud]: 'transparent',
+  [VoxelTypes.Dirt]:  'opaque',
+  [VoxelTypes.Grass]: 'opaque',
+  [VoxelTypes.Rock]:  'opaque',
+};
+
+// Winding/handedness (Babylon: left-handed, front=CW)
+const WINDING = { leftHanded: true, frontIsCCW: false };
+
+// Handler
 self.onmessage = (ev) => {
   const msg = ev.data;
   if (!msg || typeof msg.type !== 'string') return;
 
-  switch (msg.type) {
-    case 'INIT': {
-      const sizes = msg.sizes || {};
-      const shellSize   = (sizes.shellSize   | 0) || 32;
-      const logicalSize = (sizes.logicalSize | 0) || Math.max(0, shellSize - 2);
-      const shellMargin = (sizes.shellMargin | 0) || ((shellSize - logicalSize) >> 1);
-
-      SIZES = { shellSize, logicalSize, shellMargin };
-
-      if (msg.classify?.opaque) {
-        OPAQUE_MAP = makeOpaqueMap(msg.classify.opaque);
+  // Compat legacy (minime modifiche a structured.html)
+  if (msg.type === 'generateMeshFromChunk') {
+    try {
+      const arr = msg.chunkData instanceof ArrayBuffer ? new Uint8Array(msg.chunkData) :
+                  (msg.chunkData instanceof Uint8Array ? msg.chunkData : new Uint8Array(msg.chunkData));
+      if (arr.length !== SHELL_SIZE * SHELL_SIZE * SHELL_SIZE) {
+        throw new Error(`chunkData length ${arr.length} != ${SHELL_SIZE**3}`);
       }
 
-      if (msg.uv) {
-        UVCFG = {
-          atlasCols: msg.uv.atlasCols | 0 || 1,
-          atlasRows: (msg.uv.atlasRows | 0) || (msg.uv.atlasCols | 0) || 1,
-          tileForType: msg.uv.tileForType || { 0: 0 }
+      const { byType, voxelOpacity } = meshNaivePerMaterial(
+        arr,
+        { shellSize: SHELL_SIZE, logicalSize: LOGICAL_SIZE, shellMargin: SHELL_MARGIN },
+        OPACITY_RANK,
+        WINDING
+      );
+
+      // Adatta l’output al tuo formato atteso
+      const meshDataByVoxelType = {};
+      const transfers = [];
+      for (const tStr of Object.keys(byType)) {
+        const t = tStr | 0;
+        const buf = byType[t];
+
+        meshDataByVoxelType[tStr] = {
+          positions: buf.positions,
+          indices:   buf.indices,
+          colors:    buf.colors,
+          normals:   buf.normals,
+          uvs:       buf.uvs,
         };
+
+        // trasferisci i buffer per zero-copy
+        transfers.push(
+          buf.positions.buffer,
+          buf.indices.buffer,
+          buf.colors.buffer,
+          buf.normals.buffer,
+          buf.uvs.buffer
+        );
       }
 
-      // ack
-      self.postMessage({ type: 'INIT_OK', sizes: SIZES });
-      break;
-    }
-
-    case 'BUILD_CHUNK': {
-      try {
-        const { voxels, key } = msg;
-        if (!(voxels instanceof Uint8Array)) throw new Error('voxels must be Uint8Array');
-        const expected = SIZES.shellSize ** 3;
-        if (voxels.length !== expected) {
-          throw new Error(`voxels length mismatch: got ${voxels.length}, expected ${expected}`);
-        }
-
-        const res = meshNaive(voxels, SIZES, OPAQUE_MAP, UVCFG);
-
-        // Transfer buffers per evitare copie
-        const transfers = [
-          res.positions.buffer, res.normals.buffer, res.uvs.buffer, res.indices.buffer
-        ];
-
-        self.postMessage({
-          type: 'MESH_READY',
-          key: key || null,
-          counts: res.counts,
-          positions: res.positions,
-          normals: res.normals,
-          uvs: res.uvs,
-          indices: res.indices
-        }, transfers);
-      } catch (err) {
-        self.postMessage({
-          type: 'MESH_ERROR',
-          error: (err && err.message) ? err.message : String(err),
-          key: msg.key || null
-        });
+      // compila mappa di opacità testuale
+      const opacityTextMap = {};
+      for (const tStr of Object.keys(meshDataByVoxelType)) {
+        const t = tStr | 0;
+        opacityTextMap[tStr] = VOXEL_OPACITY_TEXT[t] || 'opaque';
       }
-      break;
-    }
 
-    default:
-      // ignora tipi non riconosciuti (estendibile in futuro)
-      break;
+      self.postMessage({
+        type: 'meshGenerated',
+        meshDataByVoxelType,
+        voxelOpacity: opacityTextMap
+      }, transfers);
+    } catch (err) {
+      self.postMessage({ type: 'error', message: (err && err.message) ? err.message : String(err) });
+    }
+    return;
   }
+
+  // (In futuro possiamo gestire anche INIT/BUILD_CHUNK strutturati)
 };
