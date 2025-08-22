@@ -2,116 +2,188 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <title>Generate Region (Structured)</title>
+  <title>Generate Regions (Structured, ranges)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     body { margin: 24px; }
-    form { display: grid; gap: 12px; max-width: 420px; }
+    h1 { margin-top: 0; }
+    form { display: grid; gap: 14px; max-width: 640px; }
     fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    legend { padding: 0 6px; color: #333; }
+    .grid { display: grid; gap: 10px; }
+    .row3 { grid-template-columns: 1fr 1fr 1fr; }
+    .row4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
     label { font-size: 14px; color: #333; display: block; margin-bottom: 6px; }
     input[type=number] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
     button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; }
     button.primary { background: #1f6feb; color: white; }
     button[disabled] { opacity: .6; cursor: not-allowed; }
-    .status { margin-top: 10px; font-size: 13px; color: #555; min-height: 18px; }
+    .status { margin-top: 8px; font-size: 13px; color: #555; min-height: 18px; white-space: pre-line; }
     .error { color: #b00020; }
+    .muted { color: #666; font-size: 12px; }
   </style>
 </head>
 <body>
-  <h1>Generatore Regione (structured)</h1>
-  <p>Produce un file <code>.voxl</code> con lo stesso formato del generatore attuale, ma usando <code>Region</code>/<code>Chunk</code>.</p>
+  <h1>Generatore Regioni (structured, con range)</h1>
+  <p class="muted">Crea file <code>.voxl</code> per ogni regione nel box [Xmin..Xmax] × [Ymin..Ymax] × [Zmin..Zmax], usando il nuovo <code>generator_structured.js</code>. Il formato dei file generati è identico a quello attuale.</p>
 
   <form id="gen-form">
     <fieldset>
-      <legend>Coordinate Regione</legend>
-      <div class="row">
+      <legend>Range coordinate regione</legend>
+      <div class="grid row4">
         <div>
-          <label for="rx">regionX</label>
-          <input id="rx" type="number" step="1" value="0" />
+          <label for="xFrom">X min</label>
+          <input id="xFrom" type="number" step="1" value="0" />
         </div>
         <div>
-          <label for="ry">regionY</label>
-          <input id="ry" type="number" step="1" value="0" />
+          <label for="xTo">X max</label>
+          <input id="xTo" type="number" step="1" value="0" />
         </div>
         <div>
-          <label for="rz">regionZ</label>
-          <input id="rz" type="number" step="1" value="0" />
+          <label for="yFrom">Y min</label>
+          <input id="yFrom" type="number" step="1" value="0" />
         </div>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Opzioni</legend>
-      <div class="row">
+        <div>
+          <label for="yTo">Y max</label>
+          <input id="yTo" type="number" step="1" value="0" />
+        </div>
+        <div>
+          <label for="zFrom">Z min</label>
+          <input id="zFrom" type="number" step="1" value="0" />
+        </div>
+        <div>
+          <label for="zTo">Z max</label>
+          <input id="zTo" type="number" step="1" value="0" />
+        </div>
         <div>
           <label for="seed">baseSeed</label>
           <input id="seed" type="number" step="1" value="0" />
         </div>
+        <div>
+          <label for="prefix">Prefisso file (opz.)</label>
+          <input id="prefix" type="text" placeholder="region" value="region" />
+        </div>
       </div>
+      <div id="est" class="muted" style="margin-top:6px;"></div>
     </fieldset>
 
-    <div class="row" style="grid-template-columns: auto auto auto;">
+    <div class="grid row3">
       <button id="btn-generate" class="primary" type="submit">Genera e scarica</button>
       <button id="btn-clear" type="button">Reset</button>
+      <button id="btn-stop" type="button">Stop</button>
     </div>
 
     <div id="status" class="status" aria-live="polite"></div>
   </form>
 
   <script type="module">
-    import { generateAndDownload } from './generator_structured.js';
+    import { generateRegionBuffer } from './generator_structured.js';
 
     const $ = (id) => document.getElementById(id);
-    const form = $('gen-form');
-    const btn = $('btn-generate');
-    const btnClear = $('btn-clear');
-    const statusEl = $('status');
+    const el = {
+      xFrom: $('xFrom'), xTo: $('xTo'),
+      yFrom: $('yFrom'), yTo: $('yTo'),
+      zFrom: $('zFrom'), zTo: $('zTo'),
+      seed: $('seed'), prefix: $('prefix'),
+      est: $('est'), status: $('status'),
+      btnGen: $('btn-generate'), btnClear: $('btn-clear'), btnStop: $('btn-stop'),
+      form: $('gen-form')
+    };
 
-    function toInt(el) {
-      const n = Number(el.value);
-      if (!Number.isFinite(n)) return 0;
-      return (n | 0);
+    let stopFlag = false;
+
+    const toInt = (v) => (Number(v) | 0);
+    function normalizeRange(a, b) {
+      let A = toInt(a), B = toInt(b);
+      if (A > B) [A, B] = [B, A];
+      return [A, B];
+    }
+    function rangeCount(a, b) { return Math.max(0, b - a + 1); }
+
+    function updateEstimate() {
+      const [x0,x1] = normalizeRange(el.xFrom.value, el.xTo.value);
+      const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
+      const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
+      const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
+      el.est.textContent = `Regioni totali da generare: ${total}`;
     }
 
-    function setStatus(msg, isError = false) {
-      statusEl.textContent = msg || '';
-      statusEl.classList.toggle('error', !!isError);
+    function setStatus(msg, isError=false) {
+      el.status.textContent = msg || '';
+      el.status.classList.toggle('error', !!isError);
     }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      setStatus('');
-      btn.disabled = true;
+    function downloadBuffer(buffer, name) {
+      const blob = new Blob([buffer], { type: 'application/octet-stream' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }
+
+    async function generateMany() {
+      const [x0,x1] = normalizeRange(el.xFrom.value, el.xTo.value);
+      const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
+      const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
+      const baseSeed = toInt(el.seed.value);
+      const prefix = String(el.prefix.value || 'region');
+
+      const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
+      let done = 0;
+      stopFlag = false;
+
+      el.btnGen.disabled = true;
+      el.btnClear.disabled = true;
+      el.btnStop.disabled = false;
 
       try {
-        const regionX = toInt($('rx'));
-        const regionY = toInt($('ry'));
-        const regionZ = toInt($('rz'));
-        const baseSeed = toInt($('seed'));
+        for (let rx = x0; rx <= x1; rx++) {
+          for (let ry = y0; ry <= y1; ry++) {
+            for (let rz = z0; rz <= z1; rz++) {
+              if (stopFlag) throw new Error('Interrotto dall’utente');
+              setStatus(`Generazione ${done+1}/${total} — regione (${rx}, ${ry}, ${rz})…`);
 
-        setStatus('Generazione in corso…');
+              // Genera buffer nel formato legacy (header+indice+64 chunk x 32768B)
+              const buffer = generateRegionBuffer(rx, ry, rz, { baseSeed });
 
-        // Genera e scarica (identico al flusso legacy lato file)
-        generateAndDownload(regionX, regionY, regionZ, { baseSeed });
+              // Nome file coerente con quello “storico”
+              const filename = `${prefix}_${rx}_${ry}_${rz}.voxl`;
+              downloadBuffer(buffer, filename);
 
-        setStatus('File generato e scaricato.');
+              done++;
+              // cedi il controllo al browser per non bloccare la UI
+              await Promise.resolve();
+            }
+          }
+        }
+        setStatus(`Completato: generate e scaricate ${done}/${total} regioni.`);
       } catch (err) {
-        console.error(err);
-        setStatus('Errore: ' + (err?.message || err), true);
+        setStatus(err?.message || String(err), true);
       } finally {
-        btn.disabled = false;
+        el.btnGen.disabled = false;
+        el.btnClear.disabled = false;
+        el.btnStop.disabled = true;
       }
-    });
+    }
 
-    btnClear.addEventListener('click', () => {
-      $('rx').value = 0;
-      $('ry').value = 0;
-      $('rz').value = 0;
-      $('seed').value = 0;
-      setStatus('');
+    el.form.addEventListener('submit', (e) => { e.preventDefault(); generateMany(); });
+    el.btnClear.addEventListener('click', () => {
+      el.xFrom.value = 0; el.xTo.value = 0;
+      el.yFrom.value = 0; el.yTo.value = 0;
+      el.zFrom.value = 0; el.zTo.value = 0;
+      el.seed.value = 0; el.prefix.value = 'region';
+      setStatus(''); updateEstimate();
     });
+    el.btnStop.addEventListener('click', () => { stopFlag = true; setStatus('Interruzione richiesta…'); });
+
+    ['xFrom','xTo','yFrom','yTo','zFrom','zTo'].forEach(id => {
+      el[id].addEventListener('input', updateEstimate);
+    });
+    updateEstimate();
   </script>
 </body>
 </html>
