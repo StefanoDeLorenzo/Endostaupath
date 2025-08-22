@@ -26,7 +26,7 @@ const VOXEL_OPACITY_TEXT = {
 // --- Winding / sistema di coordinate ---
 // Babylon default: left-handed, front face = CW
 const LEFT_HANDED = true;
-let   FRONT_IS_CW = true; // se vedi facce invertite su un asse, metti false
+let   FRONT_IS_CW = false; // se vedi facce invertite su un asse, metti false
 
 // --- Helpers di base ---
 function idx(x,y,z,S){ return x + y*S + z*S*S; }
@@ -67,23 +67,13 @@ function shouldEmitFace(currType, neighType) {
 
 // Indici per i due triangoli di un quad, baseIndex = primo dei 4 vertici
 function writeIndices(buf, baseIndex) {
-  if (LEFT_HANDED && FRONT_IS_CW) {
-    // CW
-    buf.indices[buf._iCursor++] = baseIndex+0;
-    buf.indices[buf._iCursor++] = baseIndex+2;
-    buf.indices[buf._iCursor++] = baseIndex+1;
-    buf.indices[buf._iCursor++] = baseIndex+0;
-    buf.indices[buf._iCursor++] = baseIndex+3;
-    buf.indices[buf._iCursor++] = baseIndex+2;
-  } else {
-    // CCW
-    buf.indices[buf._iCursor++] = baseIndex+0;
-    buf.indices[buf._iCursor++] = baseIndex+1;
-    buf.indices[buf._iCursor++] = baseIndex+2;
-    buf.indices[buf._iCursor++] = baseIndex+0;
-    buf.indices[buf._iCursor++] = baseIndex+2;
-    buf.indices[buf._iCursor++] = baseIndex+3;
-  }
+  // CCW: 0-1-2, 0-2-3
+  buf.indices[buf._iCursor++] = baseIndex+0;
+  buf.indices[buf._iCursor++] = baseIndex+1;
+  buf.indices[buf._iCursor++] = baseIndex+2;
+  buf.indices[buf._iCursor++] = baseIndex+0;
+  buf.indices[buf._iCursor++] = baseIndex+2;
+  buf.indices[buf._iCursor++] = baseIndex+3;
 }
 
 // Emetti un quad per una faccia del voxel (lx,ly,lz in coordinate LOGICHE 0..L-1)
@@ -97,17 +87,17 @@ function emitQuad(buf, lx, ly, lz, dir /*0..5*/, alpha /*0..1*/) {
   let verts, nx=0, ny=0, nz=0;
   switch (dir) {
     case 0: // +X
-      nx=+1; verts=[[x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0]]; break;
+      nx=+1; verts=[[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]]; break;
     case 1: // -X
-      nx=-1; verts=[[x0,y0,z1],[x0,y0,z0],[x0,y1,z0],[x0,y1,z1]]; break;
+      nx=-1; verts=[[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],[x0,y0,z0]]; break;
     case 2: // +Y
-      ny=+1; verts=[[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]]; break;
+      ny=+1; verts=[[x0,y1,z0],[x0,y1,z1],[x1,y1,z1],[x1,y1,z0]]; break;
     case 3: // -Y
-      ny=-1; verts=[[x0,y0,z1],[x1,y0,z1],[x1,y0,z0],[x0,y0,z0]]; break;
+      ny=-1; verts=[[x0,y0,z1],[x0,y0,z0],[x1,y0,z0],[x1,y0,z1]]; break;
     case 4: // +Z
-      nz=+1; verts=[[x0,y0,z1],[x0,y1,z1],[x1,y1,z1],[x1,y0,z1]]; break;
+      nz=+1; verts=[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]; break;
     case 5: // -Z
-      nz=-1; verts=[[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z0]]; break;
+      nz=-1; verts=[[x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0]]; break;
   }
 
   const baseIndex = buf._vCursor / 3;
