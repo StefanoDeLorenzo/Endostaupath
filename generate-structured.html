@@ -222,46 +222,63 @@
 
     /* ---------- Generazione range → ZIP ---------- */
     async function generateZip() {
-      const [x0,x1] = normalizeRange(el.xFrom.value, el.xTo.value);
-      const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
-      const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
-      const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
+    const [x0,x1] = normalizeRange(el.xFrom.value, el.xTo.value);
+    const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
+    const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
+    const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
 
-      const zipBase = el.zipName.value || 'regions';
-      const zipName = `${zipBase}.r.${x0}..${x1}.${y0}..${y1}.${z0}..${z1}.zip`;
+    const zipBase = el.zipName.value || 'regions';
+    const zipName = `${zipBase}.r.${x0}..${x1}.${y0}..${y1}.${z0}..${z1}.zip`;
 
-      stopFlag = false;
-      el.btnGen.disabled = true; el.btnClear.disabled = true; el.btnStop.disabled = false;
-      setStatus(`Genero ${total} regioni e preparo lo ZIP…`);
+    stopFlag = false;
+    el.btnGen.disabled = true; el.btnClear.disabled = true; el.btnStop.disabled = false;
 
-      const files = [];
-      let done = 0;
+    console.log(`[ZIP] Inizio generazione: ${total} regioni → ${zipName}`);
+    setStatus(`Genero ${total} regioni e preparo lo ZIP…`);
 
-      try {
-        for (let rx = x0; rx <= x1; rx++) {
-          for (let ry = y0; ry <= y1; ry++) {
-            for (let rz = z0; rz <= z1; rz++) {
-              if (stopFlag) throw new Error('Interrotto dall’utente');
-              setStatus(`Generazione ${done+1}/${total} — regione (${rx}, ${ry}, ${rz})…`);
+    const files = [];
+    let done = 0;
 
-              const buffer = generateRegionBuffer(rx, ry, rz);
-              files.push({ name: `r.${rx}.${ry}.${rz}.voxl`, data: new Uint8Array(buffer) });
+    try {
+      for (let rx = x0; rx <= x1; rx++) {
+        for (let ry = y0; ry <= y1; ry++) {
+          for (let rz = z0; rz <= z1; rz++) {
+            if (stopFlag) throw new Error('Interrotto dall’utente');
 
-              done++;
-              await Promise.resolve(); // cedi controllo alla UI
-            }
+            const label = `regione (${rx}, ${ry}, ${rz})`;
+            console.group(label);
+            console.time(label); // —— LOG: inizio regione
+            setStatus(`Generazione ${done+1}/${total} — ${label}…`);
+
+            const t0 = performance.now();
+            const buffer = generateRegionBuffer(rx, ry, rz);
+            const t1 = performance.now();
+
+            files.push({ name: `r.${rx}.${ry}.${rz}.voxl`, data: new Uint8Array(buffer) });
+
+            console.timeEnd(label); // —— LOG: fine regione (tempo)
+            console.log(`✓ completata ${label} — ${buffer.byteLength.toLocaleString()} byte in ${(t1 - t0).toFixed(1)} ms`);
+            console.groupEnd();
+
+            done++;
+            await Promise.resolve(); // cedi controllo UI
           }
         }
-
-        setStatus(`Impacchettamento ZIP (${files.length} file)…`);
-        await makeZip(files, zipName);
-        setStatus(`Completato: creato ZIP con ${files.length} regioni.`);
-      } catch (err) {
-        setStatus(err?.message || String(err), true);
-      } finally {
-        el.btnGen.disabled = false; el.btnClear.disabled = false; el.btnStop.disabled = true;
       }
+
+      console.log(`[ZIP] Impacchettamento di ${files.length} file…`);
+      setStatus(`Impacchettamento ZIP (${files.length} file)…`);
+      await makeZip(files, zipName);
+
+      console.log(`[ZIP] Completato: ${zipName}`);
+      setStatus(`Completato: creato ZIP con ${files.length} regioni.`);
+    } catch (err) {
+      console.error('[ZIP] Errore:', err);
+      setStatus(err?.message || String(err), true);
+    } finally {
+      el.btnGen.disabled = false; el.btnClear.disabled = false; el.btnStop.disabled = true;
     }
+  }
 
     el.form.addEventListener('submit', (e) => { e.preventDefault(); generateZip(); });
     el.btnClear.addEventListener('click', () => {
