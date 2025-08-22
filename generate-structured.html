@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <title>Generate Regions (Structured, ranges)</title>
+  <title>Generate Regions (ZIP)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
@@ -12,11 +12,9 @@
     fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
     legend { padding: 0 6px; color: #333; }
     .grid { display: grid; gap: 10px; }
-    .row3 { grid-template-columns: 1fr 1fr 1fr; }
     .row4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
     label { font-size: 14px; color: #333; display: block; margin-bottom: 6px; }
-    input[type=number] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
-    input[type=text] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    input[type=number], input[type=text] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
     button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; }
     button.primary { background: #1f6feb; color: white; }
     button[disabled] { opacity: .6; cursor: not-allowed; }
@@ -26,11 +24,10 @@
   </style>
 </head>
 <body>
-  <h1>Generatore Regioni (structured, con range)</h1>
+  <h1>Generatore Regioni → ZIP</h1>
   <p class="muted">
-    Crea file <code>.voxl</code> per ogni regione nel box
-    [Xmin..Xmax] × [Ymin..Ymax] × [Zmin..Zmax].<br>
-    Formato file identico all’originale. <strong>Nome file:</strong> <code>r.X.Y.Z.voxl</code> (prefisso modificabile).
+    Crea tutte le regioni nel box [Xmin..Xmax] × [Ymin..Ymax] × [Zmin..Zmax] e le salva in un unico ZIP.<br>
+    Ogni file interno è nominato <code>r.X.Y.Z.voxl</code>.
   </p>
 
   <form id="gen-form">
@@ -62,19 +59,15 @@
           <input id="zTo" type="number" step="1" value="0" />
         </div>
         <div>
-          <label for="seed">baseSeed</label>
-          <input id="seed" type="number" step="1" value="0" />
-        </div>
-        <div>
-          <label for="prefix">Prefisso file</label>
-          <input id="prefix" type="text" value="r" />
+          <label for="zipName">Nome ZIP (senza est.)</label>
+          <input id="zipName" type="text" value="regions" />
         </div>
       </div>
       <div id="est" class="muted" style="margin-top:6px;"></div>
     </fieldset>
 
-    <div class="grid row3">
-      <button id="btn-generate" class="primary" type="submit">Genera e scarica</button>
+    <div class="grid row4" style="grid-template-columns: auto auto auto auto;">
+      <button id="btn-generate" class="primary" type="submit">Genera ZIP</button>
       <button id="btn-clear" type="button">Reset</button>
       <button id="btn-stop" type="button">Stop</button>
     </div>
@@ -85,12 +78,13 @@
   <script type="module">
     import { generateRegionBuffer } from './generator_structured.js';
 
+    /* ---------- util UI ---------- */
     const $ = (id) => document.getElementById(id);
     const el = {
       xFrom: $('xFrom'), xTo: $('xTo'),
       yFrom: $('yFrom'), yTo: $('yTo'),
       zFrom: $('zFrom'), zTo: $('zTo'),
-      seed: $('seed'), prefix: $('prefix'),
+      zipName: $('zipName'),
       est: $('est'), status: $('status'),
       btnGen: $('btn-generate'), btnClear: $('btn-clear'), btnStop: $('btn-stop'),
       form: $('gen-form')
@@ -99,11 +93,7 @@
     let stopFlag = false;
 
     const toInt = (v) => (Number(v) | 0);
-    function normalizeRange(a, b) {
-      let A = toInt(a), B = toInt(b);
-      if (A > B) [A, B] = [B, A];
-      return [A, B];
-    }
+    function normalizeRange(a, b) { let A=toInt(a), B=toInt(b); if (A>B) [A,B]=[B,A]; return [A,B]; }
     function rangeCount(a, b) { return Math.max(0, b - a + 1); }
 
     function updateEstimate() {
@@ -111,7 +101,9 @@
       const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
       const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
       const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
-      el.est.textContent = `Regioni totali da generare: ${total}`;
+      // ~2.0 MiB per regione (64*32768 + header)
+      const approxMB = (total * 2.1).toFixed(1);
+      el.est.textContent = `Regioni totali: ${total} (dimensione stimata ZIP non compresso ≈ ${approxMB} MB)`;
     }
 
     function setStatus(msg, isError=false) {
@@ -119,31 +111,131 @@
       el.status.classList.toggle('error', !!isError);
     }
 
-    function downloadBuffer(buffer, name) {
-      const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    /* ---------- ZIP writer (Store, senza compressione) ---------- */
+    // CRC32
+    const CRC_TABLE = (() => {
+      const table = new Uint32Array(256);
+      for (let n=0;n<256;n++){
+        let c = n;
+        for (let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+      }
+      return table;
+    })();
+    function crc32(bytes) {
+      let c = 0 ^ -1;
+      for (let i=0;i<bytes.length;i++) c = (c >>> 8) ^ CRC_TABLE[(c ^ bytes[i]) & 0xFF];
+      return (c ^ -1) >>> 0;
+    }
+    function dosDateTime(d=new Date()){
+      let year = d.getFullYear();
+      if (year < 1980) year = 1980;
+      const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | ((d.getSeconds() / 2) | 0);
+      const dosDate = ((year - 1980) << 9) | ((d.getMonth()+1) << 5) | d.getDate();
+      return { dosTime, dosDate };
+    }
+    function u16le(n){ const a=new Uint8Array(2); a[0]=n&0xFF; a[1]=(n>>8)&0xFF; return a; }
+    function u32le(n){ const a=new Uint8Array(4); a[0]=n&0xFF; a[1]=(n>>8)&0xFF; a[2]=(n>>16)&0xFF; a[3]=(n>>24)&0xFF; return a; }
+
+    async function makeZip(files /* [{name, data:Uint8Array}] */, zipName="regions.zip") {
+      const parts = [];
+      const central = [];
+      let offset = 0;
+      const when = dosDateTime();
+
+      for (const file of files) {
+        const nameBytes = new TextEncoder().encode(file.name);
+        const data = file.data instanceof Uint8Array ? file.data : new Uint8Array(file.data);
+        const crc = crc32(data);
+        const compSize = data.length, uncompSize = data.length;
+
+        // Local file header
+        // signature
+        parts.push(u32le(0x04034b50)); offset += 4;
+        // version needed, flags, method=0 (store), time, date
+        parts.push(u16le(20)); offset+=2;
+        parts.push(u16le(0)); offset+=2;
+        parts.push(u16le(0)); offset+=2;
+        parts.push(u16le(when.dosTime)); offset+=2;
+        parts.push(u16le(when.dosDate)); offset+=2;
+        // crc32, sizes
+        parts.push(u32le(crc)); offset+=4;
+        parts.push(u32le(compSize)); offset+=4;
+        parts.push(u32le(uncompSize)); offset+=4;
+        // name len, extra len
+        parts.push(u16le(nameBytes.length)); offset+=2;
+        parts.push(u16le(0)); offset+=2;
+        // name
+        parts.push(nameBytes); offset+=nameBytes.length;
+        // data
+        parts.push(data); offset+=data.length;
+
+        // Central directory entry (we assemble later; need relative offset of local header)
+        central.push({ nameBytes, crc, compSize, uncompSize, offsetOfLocal: offset - (30 + nameBytes.length + data.length) });
+      }
+
+      const cdStart = offset;
+      // Build central directory records
+      for (const f of central) {
+        parts.push(u32le(0x02014b50)); // central signature
+        parts.push(u16le(20)); // version made by
+        parts.push(u16le(20)); // version needed
+        parts.push(u16le(0));  // flags
+        parts.push(u16le(0));  // method=0
+        parts.push(u16le(when.dosTime));
+        parts.push(u16le(when.dosDate));
+        parts.push(u32le(f.crc));
+        parts.push(u32le(f.compSize));
+        parts.push(u32le(f.uncompSize));
+        parts.push(u16le(f.nameBytes.length)); // name len
+        parts.push(u16le(0)); // extra len
+        parts.push(u16le(0)); // comment len
+        parts.push(u16le(0)); // disk start
+        parts.push(u16le(0)); // internal attrs
+        parts.push(u32le(0)); // external attrs
+        parts.push(u32le(f.offsetOfLocal)); // rel offset of local header
+        parts.push(f.nameBytes);
+        offset += 46 + f.nameBytes.length;
+      }
+      const cdEnd = offset;
+      const cdSize = cdEnd - cdStart;
+
+      // End of central directory
+      parts.push(u32le(0x06054b50)); // EOCD
+      parts.push(u16le(0)); // disk no.
+      parts.push(u16le(0)); // disk with central dir
+      parts.push(u16le(central.length)); // entries on this disk
+      parts.push(u16le(central.length)); // total entries
+      parts.push(u32le(cdSize)); // size of central dir
+      parts.push(u32le(cdStart)); // offset of central dir
+      parts.push(u16le(0)); // comment length
+
+      const blob = new Blob(parts, { type: 'application/zip' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = name;
+      a.download = zipName.endsWith('.zip') ? zipName : (zipName + '.zip');
       document.body.appendChild(a);
       a.click();
       URL.revokeObjectURL(a.href);
       a.remove();
     }
 
-    async function generateMany() {
+    /* ---------- Generazione range → ZIP ---------- */
+    async function generateZip() {
       const [x0,x1] = normalizeRange(el.xFrom.value, el.xTo.value);
       const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
       const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
-      const baseSeed = toInt(el.seed.value);
-      const prefix = String(el.prefix.value || 'r');
-
       const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
-      let done = 0;
-      stopFlag = false;
 
-      el.btnGen.disabled = true;
-      el.btnClear.disabled = true;
-      el.btnStop.disabled = false;
+      const zipBase = el.zipName.value || 'regions';
+      const zipName = `${zipBase}.r.${x0}..${x1}.${y0}..${y1}.${z0}..${z1}.zip`;
+
+      stopFlag = false;
+      el.btnGen.disabled = true; el.btnClear.disabled = true; el.btnStop.disabled = false;
+      setStatus(`Genero ${total} regioni e preparo lo ZIP…`);
+
+      const files = [];
+      let done = 0;
 
       try {
         for (let rx = x0; rx <= x1; rx++) {
@@ -152,40 +244,35 @@
               if (stopFlag) throw new Error('Interrotto dall’utente');
               setStatus(`Generazione ${done+1}/${total} — regione (${rx}, ${ry}, ${rz})…`);
 
-              const buffer = generateRegionBuffer(rx, ry, rz, { baseSeed });
-
-              // <<< naming corretto con punti >>>
-              const filename = `${prefix}.${rx}.${ry}.${rz}.voxl`;
-              downloadBuffer(buffer, filename);
+              const buffer = generateRegionBuffer(rx, ry, rz);
+              files.push({ name: `r.${rx}.${ry}.${rz}.voxl`, data: new Uint8Array(buffer) });
 
               done++;
-              await Promise.resolve(); // cedi controllo UI
+              await Promise.resolve(); // cedi controllo alla UI
             }
           }
         }
-        setStatus(`Completato: generate e scaricate ${done}/${total} regioni.`);
+
+        setStatus(`Impacchettamento ZIP (${files.length} file)…`);
+        await makeZip(files, zipName);
+        setStatus(`Completato: creato ZIP con ${files.length} regioni.`);
       } catch (err) {
         setStatus(err?.message || String(err), true);
       } finally {
-        el.btnGen.disabled = false;
-        el.btnClear.disabled = false;
-        el.btnStop.disabled = true;
+        el.btnGen.disabled = false; el.btnClear.disabled = false; el.btnStop.disabled = true;
       }
     }
 
-    el.form.addEventListener('submit', (e) => { e.preventDefault(); generateMany(); });
+    el.form.addEventListener('submit', (e) => { e.preventDefault(); generateZip(); });
     el.btnClear.addEventListener('click', () => {
       el.xFrom.value = 0; el.xTo.value = 0;
       el.yFrom.value = 0; el.yTo.value = 0;
       el.zFrom.value = 0; el.zTo.value = 0;
-      el.seed.value = 0; el.prefix.value = 'r';
+      el.zipName.value = 'regions';
       setStatus(''); updateEstimate();
     });
     el.btnStop.addEventListener('click', () => { stopFlag = true; setStatus('Interruzione richiesta…'); });
-
-    ['xFrom','xTo','yFrom','yTo','zFrom','zTo'].forEach(id => {
-      el[id].addEventListener('input', updateEstimate);
-    });
+    ['xFrom','xTo','yFrom','yTo','zFrom','zTo'].forEach(id => el[id].addEventListener('input', updateEstimate));
     updateEstimate();
   </script>
 </body>
