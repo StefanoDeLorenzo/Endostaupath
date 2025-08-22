@@ -16,6 +16,7 @@
     .row4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
     label { font-size: 14px; color: #333; display: block; margin-bottom: 6px; }
     input[type=number] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    input[type=text] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
     button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; }
     button.primary { background: #1f6feb; color: white; }
     button[disabled] { opacity: .6; cursor: not-allowed; }
@@ -26,7 +27,11 @@
 </head>
 <body>
   <h1>Generatore Regioni (structured, con range)</h1>
-  <p class="muted">Crea file <code>.voxl</code> per ogni regione nel box [Xmin..Xmax] × [Ymin..Ymax] × [Zmin..Zmax], usando il nuovo <code>generator_structured.js</code>. Il formato dei file generati è identico a quello attuale.</p>
+  <p class="muted">
+    Crea file <code>.voxl</code> per ogni regione nel box
+    [Xmin..Xmax] × [Ymin..Ymax] × [Zmin..Zmax].<br>
+    Formato file identico all’originale. <strong>Nome file:</strong> <code>r.X.Y.Z.voxl</code> (prefisso modificabile).
+  </p>
 
   <form id="gen-form">
     <fieldset>
@@ -61,8 +66,8 @@
           <input id="seed" type="number" step="1" value="0" />
         </div>
         <div>
-          <label for="prefix">Prefisso file (opz.)</label>
-          <input id="prefix" type="text" placeholder="region" value="region" />
+          <label for="prefix">Prefisso file</label>
+          <input id="prefix" type="text" value="r" />
         </div>
       </div>
       <div id="est" class="muted" style="margin-top:6px;"></div>
@@ -130,7 +135,7 @@
       const [y0,y1] = normalizeRange(el.yFrom.value, el.yTo.value);
       const [z0,z1] = normalizeRange(el.zFrom.value, el.zTo.value);
       const baseSeed = toInt(el.seed.value);
-      const prefix = String(el.prefix.value || 'region');
+      const prefix = String(el.prefix.value || 'r');
 
       const total = rangeCount(x0,x1) * rangeCount(y0,y1) * rangeCount(z0,z1);
       let done = 0;
@@ -147,16 +152,14 @@
               if (stopFlag) throw new Error('Interrotto dall’utente');
               setStatus(`Generazione ${done+1}/${total} — regione (${rx}, ${ry}, ${rz})…`);
 
-              // Genera buffer nel formato legacy (header+indice+64 chunk x 32768B)
               const buffer = generateRegionBuffer(rx, ry, rz, { baseSeed });
 
-              // Nome file coerente con quello “storico”
-              const filename = `${prefix}_${rx}_${ry}_${rz}.voxl`;
+              // <<< naming corretto con punti >>>
+              const filename = `${prefix}.${rx}.${ry}.${rz}.voxl`;
               downloadBuffer(buffer, filename);
 
               done++;
-              // cedi il controllo al browser per non bloccare la UI
-              await Promise.resolve();
+              await Promise.resolve(); // cedi controllo UI
             }
           }
         }
@@ -175,7 +178,7 @@
       el.xFrom.value = 0; el.xTo.value = 0;
       el.yFrom.value = 0; el.yTo.value = 0;
       el.zFrom.value = 0; el.zTo.value = 0;
-      el.seed.value = 0; el.prefix.value = 'region';
+      el.seed.value = 0; el.prefix.value = 'r';
       setStatus(''); updateEstimate();
     });
     el.btnStop.addEventListener('click', () => { stopFlag = true; setStatus('Interruzione richiesta…'); });
