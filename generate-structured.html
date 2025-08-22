@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Generate Region (Structured)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 24px; }
+    form { display: grid; gap: 12px; max-width: 420px; }
+    fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    label { font-size: 14px; color: #333; display: block; margin-bottom: 6px; }
+    input[type=number] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; }
+    button.primary { background: #1f6feb; color: white; }
+    button[disabled] { opacity: .6; cursor: not-allowed; }
+    .status { margin-top: 10px; font-size: 13px; color: #555; min-height: 18px; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Generatore Regione (structured)</h1>
+  <p>Produce un file <code>.voxl</code> con lo stesso formato del generatore attuale, ma usando <code>Region</code>/<code>Chunk</code>.</p>
+
+  <form id="gen-form">
+    <fieldset>
+      <legend>Coordinate Regione</legend>
+      <div class="row">
+        <div>
+          <label for="rx">regionX</label>
+          <input id="rx" type="number" step="1" value="0" />
+        </div>
+        <div>
+          <label for="ry">regionY</label>
+          <input id="ry" type="number" step="1" value="0" />
+        </div>
+        <div>
+          <label for="rz">regionZ</label>
+          <input id="rz" type="number" step="1" value="0" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Opzioni</legend>
+      <div class="row">
+        <div>
+          <label for="seed">baseSeed</label>
+          <input id="seed" type="number" step="1" value="0" />
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="row" style="grid-template-columns: auto auto auto;">
+      <button id="btn-generate" class="primary" type="submit">Genera e scarica</button>
+      <button id="btn-clear" type="button">Reset</button>
+    </div>
+
+    <div id="status" class="status" aria-live="polite"></div>
+  </form>
+
+  <script type="module">
+    import { generateAndDownload } from './generator_structured.js';
+
+    const $ = (id) => document.getElementById(id);
+    const form = $('gen-form');
+    const btn = $('btn-generate');
+    const btnClear = $('btn-clear');
+    const statusEl = $('status');
+
+    function toInt(el) {
+      const n = Number(el.value);
+      if (!Number.isFinite(n)) return 0;
+      return (n | 0);
+    }
+
+    function setStatus(msg, isError = false) {
+      statusEl.textContent = msg || '';
+      statusEl.classList.toggle('error', !!isError);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setStatus('');
+      btn.disabled = true;
+
+      try {
+        const regionX = toInt($('rx'));
+        const regionY = toInt($('ry'));
+        const regionZ = toInt($('rz'));
+        const baseSeed = toInt($('seed'));
+
+        setStatus('Generazione in corso…');
+
+        // Genera e scarica (identico al flusso legacy lato file)
+        generateAndDownload(regionX, regionY, regionZ, { baseSeed });
+
+        setStatus('File generato e scaricato.');
+      } catch (err) {
+        console.error(err);
+        setStatus('Errore: ' + (err?.message || err), true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    btnClear.addEventListener('click', () => {
+      $('rx').value = 0;
+      $('ry').value = 0;
+      $('rz').value = 0;
+      $('seed').value = 0;
+      setStatus('');
+    });
+  </script>
+</body>
+</html>

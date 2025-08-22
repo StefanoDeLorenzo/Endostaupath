@@ -1,321 +1,149 @@
-// generator.js - Worker per la generazione di regioni Voxel
+// generator_structured.js
+// Generatore strutturato: produce un ArrayBuffer identico al formato legacy,
+// ma con architettura a classi (Region/Chunk).
 
-// ============================================================================
-// # IMPLEMENTAZIONE DEL RUMORE PERLIN 3D
-// Basata su una versione standard di Ken Perlin del 2002.
-// ============================================================================
-function perlinNoise3D(x, y, z) {
-    const p = new Uint8Array(512);
-    const permutation = [151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 175, 87, 86, 232, 199, 158, 58, 77, 24, 226, 207, 170, 182, 179, 5, 236, 123, 110, 150, 134, 100, 16, 93, 249, 112, 192, 169, 211, 218, 128, 76, 139, 115, 127, 245, 196, 49, 176, 185, 19, 147, 238, 156, 46, 143, 205, 107, 253, 178, 13, 242, 198, 11, 101, 145, 14, 18, 184, 194, 204, 173, 212, 152, 17, 18, 239, 210, 129, 172, 197, 45, 78, 16, 188, 104, 19, 181, 244, 209, 184, 96, 22, 216, 73, 126, 10, 215, 200, 162, 105, 114, 246, 209, 138, 12, 47, 118, 24, 165, 208, 22, 98, 166, 15, 102, 235, 221, 16, 233, 11, 198, 48, 149, 102, 60, 250, 173, 228, 14, 212, 213, 221, 203, 167, 235, 195, 219, 171, 15, 168, 158, 204, 135, 16, 70, 113, 187, 164, 119, 180, 251, 80, 14, 60, 159, 177, 224, 225, 230, 239, 216, 24, 111, 218, 202, 90, 89, 74, 169, 186, 206, 61, 91, 15, 217, 132, 21, 10, 12, 159, 168, 79, 167, 12, 143, 205, 193, 214, 112, 43, 25, 243, 85, 246, 163, 145, 154, 97, 113, 144, 171, 122, 191, 162, 248, 201, 220, 4, 189, 222, 247, 65, 133, 254, 195, 20, 231, 183, 174, 15
-    ];
-    for (let i = 0; i < 256; i++) {
-        p[i] = p[i + 256] = permutation[i];
-    }
-    
-    function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-    function lerp(t, a, b) { return a + t * (b - a); }
-    function grad(hash, x, y, z) {
-        let h = hash & 15;
-        let u = h < 8 ? x : y;
-        let v = h < 4 ? y : h === 12 || h === 14 ? x : z;
-        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-    }
-    
-    let X = Math.floor(x) & 255;
-    let Y = Math.floor(y) & 255;
-    let Z = Math.floor(z) & 255;
-    x -= Math.floor(x);
-    y -= Math.floor(y);
-    z -= Math.floor(z);
-    let u = fade(x);
-    let v = fade(y);
-    let w = fade(z);
-    let A = p[X] + Y;
-    let B = p[X + 1] + Y;
-    let A0 = p[A] + Z;
-    let A1 = p[A + 1] + Z;
-    let B0 = p[B] + Z;
-    let B1 = p[B + 1] + Z;
-    return lerp(w, lerp(v, lerp(u, grad(p[A0], x, y, z), grad(p[B0], x - 1, y, z)),
-            lerp(u, grad(p[A1], x, y - 1, z), grad(p[B1], x - 1, y - 1, z))),
-        lerp(v, lerp(u, grad(p[A0 + 1], x, y, z - 1), grad(p[B0 + 1], x - 1, y, z - 1)),
-            lerp(u, grad(p[A1 + 1], x, y - 1, z - 1), grad(p[B1 + 1], x - 1, y - 1, z - 1))));
+import { REGION_SCHEMA } from "./src/world/config.js";
+import { Region } from "./src/world/region.js";
+import { Chunk } from "./src/world/chunk.js";
+
+/** PRNG semplice e deterministico (xorshift32) per semi riproducibili */
+function makeRng(seed) {
+  let s = (seed | 0) || 123456789;
+  return function rand() {
+    // xorshift32
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+    // [0,1)
+    return ((s >>> 0) / 0x100000000);
+  };
 }
 
-// ============================================================================
-// # COSTANTI E CLASSI
-// ============================================================================
-
-const SKY_LEVEL = 50; 
-const GROUND_LEVEL = 10;
-const VoxelTypes = {
-    Air: 0,
-    Dirt: 1,
-    Cloud: 2,
-    Grass: 3,
-    Rock: 4
-};
-
-
-class VoxelChunk {
-    constructor(logicalChunkData) {
-        this.logicalChunkData = logicalChunkData; 
-    }
-
-    getVoxel(x, y, z) {
-        if (x >= 0 && x < 30 && y >= 0 && y < 30 && z >= 0 && z < 30) {
-            return this.logicalChunkData[x + 30 * (y + 30 * z)];
-        }
-        return VoxelTypes.Air;
-    }
+/** Mischia 3 interi (per coord region/chunk) in un seed 32-bit */
+function mixSeed(a, b, c) {
+  let h = 0x9e3779b9; // golden ratio
+  h ^= a + 0x85ebca6b + (h << 6) + (h >>> 2);
+  h ^= b + 0xc2b2ae35 + (h << 6) + (h >>> 2);
+  h ^= c + 0x27d4eb2f + (h << 6) + (h >>> 2);
+  return h | 0;
 }
 
-class WorldGenerator {
-    constructor() {
-        this.worldCache = new Map();
-    }
-
-    generateLogicalChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-        const chunkData = new Uint8Array(30 * 30 * 30);
-        const scale = 0.05; 
-    
-        for (let x = 0; x < 30; x++) {
-            for (let y = 0; y < 30; y++) {
-                for (let z = 0; z < 30; z++) {
-                    const globalX = regionX * (4 * 30) + chunkX * 30 + x;
-                    const globalY = regionY * (4 * 30) + chunkY * 30 + y;
-                    const globalZ = regionZ * (4 * 30) + chunkZ * 30 + z;
-
-                    let voxelType = VoxelTypes.Air; 
-                    
-                    if (globalY > SKY_LEVEL) {
-                        const cloudNoise = perlinNoise3D(globalX * 0.02, globalY * 0.02, globalZ * 0.02);
-                        if (cloudNoise > 0.4) {
-                            voxelType = VoxelTypes.Cloud; 
-                        } else {
-                            voxelType = VoxelTypes.Air;
-                        }
-                    } else {
-                        const surfaceNoise = perlinNoise3D(globalX * scale, 0, globalZ * scale);
-                        const surfaceHeight = GROUND_LEVEL + Math.floor(Math.abs(surfaceNoise) * 20);
-                        
-                        if (globalY < surfaceHeight) {
-                            if (globalY === surfaceHeight - 1) {
-                                voxelType = VoxelTypes.Grass;
-                            } else {
-                                voxelType = VoxelTypes.Dirt;
-                            }
-                        }
-
-                        if (globalY < GROUND_LEVEL) {
-                            const caveNoise = perlinNoise3D(globalX * 0.1, globalY * 0.1, globalZ * 0.1);
-                            if (caveNoise > 0.3) {
-                                voxelType = VoxelTypes.Rock;
-                            } else {
-                                voxelType = VoxelTypes.Air;
-                            }
-                        }
-                    }
-                    
-                    const index = x + 30 * (y + 30 * z);
-                    chunkData[index] = voxelType;
-                }
-            }
-        }
-        return new VoxelChunk(chunkData);
-    }
-    
-    getOrCreateChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-        const key = `${regionX}-${regionY}-${regionZ}-${chunkX}-${chunkY}-${chunkZ}`;
-        if (this.worldCache.has(key)) {
-            return this.worldCache.get(key);
-        }
-        const chunk = this.generateLogicalChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
-        this.worldCache.set(key, chunk);
-        return chunk;
-    }
-    
-    createChunkWithShell(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-        const chunkWithShell = new Uint8Array(32 * 32 * 32);
-
-        for (let x = 0; x < 32; x++) {
-            for (let y = 0; y < 32; y++) {
-                for (let z = 0; z < 32; z++) {
-                    const innerX = x - 1;
-                    const innerY = y - 1;
-                    const innerZ = z - 1;
-                    
-                    let voxelData = VoxelTypes.Air;
-                    
-                    if (innerX >= 0 && innerX < 30 && innerY >= 0 && innerY < 30 && innerZ >= 0 && innerZ < 30) {
-                        const chunk = this.getOrCreateChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
-                        voxelData = chunk.getVoxel(innerX, innerY, innerZ);
-                    } else {
-                        let neighborRegionX = regionX, neighborRegionY = regionY, neighborRegionZ = regionZ;
-                        let neighborChunkX = chunkX, neighborChunkY = chunkY, neighborChunkZ = chunkZ;
-                        let neighborInnerX = innerX, neighborInnerY = innerY, neighborInnerZ = innerZ;
-
-                        if (innerX < 0) {
-                            neighborChunkX--;
-                            neighborInnerX = 29;
-                        } else if (innerX >= 30) {
-                            neighborChunkX++;
-                            neighborInnerX = 0;
-                        }
-
-                        if (innerY < 0) {
-                            neighborChunkY--;
-                            neighborInnerY = 29;
-                        } else if (innerY >= 30) {
-                            neighborChunkY++;
-                            neighborInnerY = 0;
-                        }
-
-                        if (innerZ < 0) {
-                            neighborChunkZ--;
-                            neighborInnerZ = 29;
-                        } else if (innerZ >= 30) {
-                            neighborChunkZ++;
-                            neighborInnerZ = 0;
-                        }
-
-                        if (neighborChunkX < 0) {
-                            neighborRegionX--;
-                            neighborChunkX = 3;
-                        } else if (neighborChunkX >= 4) {
-                            neighborRegionX++;
-                            neighborChunkX = 0;
-                        }
-
-                        if (neighborChunkY < 0) {
-                            neighborRegionY--;
-                            neighborChunkY = 3;
-                        } else if (neighborChunkY >= 4) {
-                            neighborRegionY++;
-                            neighborChunkY = 0;
-                        }
-
-                        if (neighborChunkZ < 0) {
-                            neighborRegionZ--;
-                            neighborChunkZ = 3;
-                        } else if (neighborChunkZ >= 4) {
-                            neighborRegionZ++;
-                            neighborChunkZ = 0;
-                        }
-
-                        const neighborChunk = this.getOrCreateChunk(neighborRegionX, neighborRegionY, neighborRegionZ, neighborChunkX, neighborChunkY, neighborChunkZ);
-                        voxelData = neighborChunk.getVoxel(neighborInnerX, neighborInnerY, neighborInnerZ);
-                    }
-                    
-                    const index = x + 32 * (y + 32 * z);
-                    chunkWithShell[index] = voxelData;
-                }
-            }
-        }
-        return chunkWithShell;
-    }
-
-    writeRegionFile(regionX, regionY, regionZ) {
-        const chunksWithShell = [];
-        for (let chunkX = 0; chunkX < 4; chunkX++) {
-            for (let chunkY = 0; chunkY < 4; chunkY++) {
-                for (let chunkZ = 0; chunkZ < 4; chunkZ++) {
-                    chunksWithShell.push(this.createChunkWithShell(regionX, regionY, regionZ, chunkX, chunkY, chunkZ));
-                }
-            }
-        }
-        
-        const totalChunks = 64;
-        const chunkSizeInBytes = 32768; 
-        const headerSize = 11;
-        const indexTableSize = totalChunks * 5;
-        const chunkDataOffset = headerSize + indexTableSize;
-        
-        const indexTable = new Uint8Array(indexTableSize);
-        let currentOffset = chunkDataOffset;
-        for (let i = 0; i < totalChunks; i++) {
-            indexTable[i * 5 + 0] = (currentOffset >> 16) & 0xFF;
-            indexTable[i * 5 + 1] = (currentOffset >> 8) & 0xFF;
-            indexTable[i * 5 + 2] = currentOffset & 0xFF;
-            indexTable[i * 5 + 3] = (chunkSizeInBytes >> 8) & 0xFF;
-            indexTable[i * 5 + 4] = chunkSizeInBytes & 0xFF;
-            currentOffset += chunkSizeInBytes;
-        }
-
-        const totalFileSize = chunkDataOffset + totalChunks * chunkSizeInBytes;
-        const finalBuffer = new ArrayBuffer(totalFileSize);
-        const view = new DataView(finalBuffer);
-
-        view.setUint32(0, 0x564F584C, false); 
-        view.setUint8(4, 1);
-        view.setUint8(5, 32); view.setUint8(6, 32); view.setUint8(7, 32); 
-        view.setUint8(8, 0); view.setUint8(9, 0); view.setUint8(10, 64);
-        
-        new Uint8Array(finalBuffer, headerSize, indexTableSize).set(indexTable);
-
-        let dataOffset = chunkDataOffset;
-        for (const chunk of chunksWithShell) {
-            new Uint8Array(finalBuffer, dataOffset, chunkSizeInBytes).set(chunk);
-            dataOffset += chunkSizeInBytes;
-        }
-
-        return finalBuffer;
-    }
+/** Helper: calcola l’origine (in voxel) di un chunk nel mondo globale */
+function chunkWorldOrigin(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
+  const S = REGION_SCHEMA.CHUNK_SIZE; // 32
+  // Con griglia 4: ogni regione copre 4*S voxel per asse
+  const span = REGION_SCHEMA.GRID * S; // 128 voxel per asse
+  return {
+    x: regionX * span + chunkX * S,
+    y: regionY * span + chunkY * S,
+    z: regionZ * span + chunkZ * S,
+  };
 }
 
-// ============================================================================
-// # LOGICA DEL WORKER
-// ============================================================================
-const generator = new WorldGenerator();
+/**
+ * Qui va la TUA logica di generazione contenuti del chunk.
+ * Scopo: riempire i 32*32*32 byte (shell già incluso) con gli stessi valori
+ * che produceva `createChunkWithShell(...)`.
+ *
+ * Suggerimento: incolla qui dentro (o richiamala) la logica attuale, ma
+ * scrivendo su `chunk.set(x,y,z,val)` / `chunk.voxels[...]`.
+ */
+function generateChunkData({ chunk, regionX, regionY, regionZ, chunkX, chunkY, chunkZ, seed }) {
+  const S = Chunk.SIZE; // 32
+  const rng = makeRng(seed);
 
-self.onmessage = async (event) => {
-    console.log("Worker: Messaggio ricevuto dal thread principale.", event.data);
-    const { type, regionX, regionY, regionZ } = event.data;
+  // === ESEMPIO MINIMO (sostituisci con la tua logica attuale!) ===
+  // Attenzione: questo è solo un placeholder che riempie “aria” (0).
+  // Incolla qui l’equivalente della tua createChunkWithShell per ottenere
+  // esattamente lo stesso risultato di prima.
+  chunk.fill(0);
 
-    if (type === 'generateRegion') {
-        try {
-            console.log(`Worker: Avvio generazione per la regione (${regionX}, ${regionY}, ${regionZ})...`);
-            
-            // Popola la cache per la regione corrente e i suoi vicini
-            const fromX = regionX - 1, toX = regionX + 1;
-            const fromY = regionY - 1, toY = regionY + 1;
-            const fromZ = regionZ - 1, toZ = regionZ + 1;
-            
-            for (let x = fromX; x <= toX; x++) {
-                for (let y = fromY; y <= toY; y++) {
-                    for (let z = fromZ; z <= toZ; z++) {
-                        for(let cx = 0; cx < 4; cx++) {
-                            for(let cy = 0; cy < 4; cy++) {
-                                for(let cz = 0; cz < 4; cz++) {
-                                    generator.getOrCreateChunk(x, y, z, cx, cy, cz);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+  // Esempio di come potresti impostare un bordo solido (se servisse):
+  // for (let x=0; x<S; x++) for (let z=0; z<S; z++) {
+  //   chunk.set(x, 0, z, 1);          // pavimento
+  //   chunk.set(x, S-1, z, 1);        // soffitto
+  // }
+  // for (let y=0; y<S; y++) for (let z=0; z<S; z++) {
+  //   chunk.set(0, y, z, 1);          // muro W
+  //   chunk.set(S-1, y, z, 1);        // muro E
+  // }
+  // for (let y=0; y<S; y++) for (let x=0; x<S; x++) {
+  //   chunk.set(x, y, 0, 1);          // muro N
+  //   chunk.set(x, y, S-1, 1);        // muro S
+  // }
 
-            const buffer = generator.writeRegionFile(regionX, regionY, regionZ);
-            
-            console.log(`Worker: Generazione completata per la regione (${regionX}, ${regionY}, ${regionZ}). Invio i dati al thread principale.`);
-            
-            self.postMessage({
-                type: 'regionGenerated',
-                regionX: regionX,
-                regionY: regionY,
-                regionZ: regionZ,
-                buffer: buffer
-            }, [buffer]);
+  // === FINE ESEMPIO ===
+}
 
-        } catch (error) {
-            console.error(`Worker: Errore critico durante la generazione della regione (${regionX}, ${regionY}, ${regionZ}).`, error);
-            self.postMessage({
-                type: 'error',
-                regionX: regionX,
-                regionY: regionY,
-                regionZ: regionZ,
-                message: error.message
-            });
-        }
+/**
+ * Costruisce un singolo Chunk (classe) con la tua generazione, mantenendo
+ * il “guscio” dentro i voxel esterni (come oggi).
+ */
+function buildChunk({ regionX, regionY, regionZ, chunkX, chunkY, chunkZ, baseSeed = 0 }) {
+  const origin = chunkWorldOrigin(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
+  const chunk = new Chunk({ origin }); // 32^3 zero (aria)
+  const seed = mixSeed(
+    baseSeed ^ (regionX * 73856093) ^ (regionY * 19349663) ^ (regionZ * 83492791),
+    (chunkX * 15731) ^ (chunkY * 789221) ^ (chunkZ * 1376312589),
+    0xDEADBEEF
+  );
+  generateChunkData({ chunk, regionX, regionY, regionZ, chunkX, chunkY, chunkZ, seed });
+  return chunk;
+}
+
+/**
+ * Costruisce una Region 4x4x4 e la popola chiamando `buildChunk` per ciascun chunk.
+ * Ritorna un oggetto Region completo.
+ */
+export function buildRegion(regionX, regionY, regionZ, { baseSeed = 0 } = {}) {
+  const region = new Region({ regionX, regionY, regionZ, schema: REGION_SCHEMA, ChunkClass: Chunk });
+
+  // Ordine identico: for (x) for (y) for (z)
+  for (let chunkX = 0; chunkX < REGION_SCHEMA.GRID; chunkX++) {
+    for (let chunkY = 0; chunkY < REGION_SCHEMA.GRID; chunkY++) {
+      for (let chunkZ = 0; chunkZ < REGION_SCHEMA.GRID; chunkZ++) {
+        const chunk = buildChunk({ regionX, regionY, regionZ, chunkX, chunkY, chunkZ, baseSeed });
+        region.setChunk(chunkX, chunkY, chunkZ, chunk);
+      }
     }
-};
+  }
+  return region;
+}
+
+/**
+ * Entry point “compatibile” col flusso attuale:
+ * ritorna l’ArrayBuffer del file regione (identico al legacy).
+ */
+export function generateRegionBuffer(regionX, regionY, regionZ, { baseSeed = 0 } = {}) {
+  const region = buildRegion(regionX, regionY, regionZ, { baseSeed });
+  return region.toBuffer(); // header+indice+64 blocchi 32768B
+}
+
+/**
+ * Se vuoi integrarlo direttamente con generate.html (bottone “genera e scarica”):
+ */
+export function generateAndDownload(regionX, regionY, regionZ, { baseSeed = 0 } = {}) {
+  const buffer = generateRegionBuffer(regionX, regionY, regionZ, { baseSeed });
+  const blob = new Blob([buffer], { type: "application/octet-stream" });
+  const fileName = `region_${regionX}_${regionY}_${regionZ}.voxl`;
+
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  a.remove();
+}
+
+/**
+ * Adapter opzionale: se vuoi riusare temporaneamente la tua funzione legacy
+ * `createChunkWithShell(...)` (che restituisce Uint8Array da 32768 B),
+ * puoi chiamarla qui e riversarla in un Chunk, così:
+ *
+ *   function buildChunkWithLegacyAdapter(ctx, args...) {
+ *     const shell = createChunkWithShell(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
+ *     return Chunk.fromShellData(shell, origin);
+ *   }
+ *
+ * Ma l’obiettivo è spostare la generazione in `generateChunkData()` e usare
+ * solo API di Chunk (get/set/fill/…).
+ */
