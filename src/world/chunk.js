@@ -121,4 +121,6 @@ export class Chunk {
     }
     return new Chunk({ voxels: uint8, origin });
   }
+  
+  shellByteLength() { return this.voxels.length; } // oggi 32768
 }
