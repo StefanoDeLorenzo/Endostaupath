@@ -6,7 +6,7 @@
 //   MESH_READY  <- { type:'MESH_READY', key, counts, positions, normals, uvs, indices }  (con transferables)
 
 import { makeOpaqueMap } from '../mesh/common.js';
-import { meshNaive } from './mesher_naive.js';
+import { meshNaive } from '../mesh/mesher_naive.js';
 
 let SIZES = { shellSize: 32, logicalSize: 30, shellMargin: 1 };
 let OPAQUE_MAP = (() => {
