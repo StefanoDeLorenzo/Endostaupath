@@ -180,7 +180,8 @@ self.onmessage = async (event) => {
                     meshData[voxelType].positions.buffer,
                     meshData[voxelType].normals.buffer,
                     meshData[voxelType].indices.buffer,
-                    meshData[voxelType].colors.buffer
+                    meshData[voxelType].colors.buffer,
+                    meshData[voxelType].uvs.buffer
                 );
             }
 
