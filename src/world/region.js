@@ -17,7 +17,7 @@ export class Region {
 
     // Precalcolo costanti dal solo schema (niente chiamate per-chunk)
     this.GRID = schema.GRID;
-    this.CHUNK_SIZE = schema.CHUNK_SIZE;
+    this.CHUNK_SIZE_SHELL = schema.CHUNK_SIZE_SHELL;
     this.CHUNK_BYTES = schema.CHUNK_SHELL_BYTES;
 
     this.TOTAL = this.GRID * this.GRID * this.GRID;
@@ -67,9 +67,9 @@ export class Region {
     // Header
     view.setUint32(0, Region.MAGIC, false);
     view.setUint8(4, Region.VERSION);
-    view.setUint8(5, this.CHUNK_SIZE);
-    view.setUint8(6, this.CHUNK_SIZE);
-    view.setUint8(7, this.CHUNK_SIZE);
+    view.setUint8(5, this.CHUNK_SIZE_SHELL);
+    view.setUint8(6, this.CHUNK_SIZE_SHELL);
+    view.setUint8(7, this.CHUNK_SIZE_SHELL);
     view.setUint8(8, (this.TOTAL >> 16) & 0xFF);
     view.setUint8(9, (this.TOTAL >> 8) & 0xFF);
     view.setUint8(10, this.TOTAL & 0xFF);
@@ -117,8 +117,8 @@ export class Region {
     if (version !== Region.VERSION) throw new Error(`Unsupported version ${version}`);
 
     const sx = view.getUint8(5), sy = view.getUint8(6), sz = view.getUint8(7);
-    if (sx !== schema.CHUNK_SIZE || sy !== schema.CHUNK_SIZE || sz !== schema.CHUNK_SIZE) {
-      throw new Error(`Chunk size mismatch: file ${sx},${sy},${sz} vs schema ${schema.CHUNK_SIZE}`);
+    if (sx !== schema.CHUNK_SIZE_SHELL || sy !== schema.CHUNK_SIZE_SHELL || sz !== schema.CHUNK_SIZE_SHELL) {
+      throw new Error(`Chunk size mismatch: file ${sx},${sy},${sz} vs schema ${schema.CHUNK_SIZE_SHELL}`);
     }
     const total = (view.getUint8(8) << 16) | (view.getUint8(9) << 8) | view.getUint8(10);
     const GRID = schema.GRID;
