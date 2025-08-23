@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Voxel Engine con Babylon.js</title>
+    <style>
+        body, html, canvas {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    
+    <script>
+        const CHUNK_SIZE = 30;
+        const CHUNK_SIZE_SHELL = 32;
+        const REGION_DIMENSION = 4;
+        
+        // --- 🎮 Classe per l'inizializzazione della Scena ---
+        class SceneInitializer {
+            constructor(scene, engine, canvas) {
+                this.scene = scene;
+                this.engine = engine;
+                this.canvas = canvas;
+                this.shadowGenerator = null;
+            }
+
+            initializeScene() {
+                this.scene.ambientColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+                this.createCamera();
+                this.createAmbientLight();
+                this.shadowGenerator = this.createSunLight();
+                this.scene.collisionsEnabled = true;
+            }
+
+            createCamera() {
+                const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, 60), this.scene);
+                camera.setTarget(new BABYLON.Vector3(60, 0, 60));
+                camera.inertia = 0.5;
+                camera.angularSensibility = 1500;
+                camera.speed = 8;
+                camera.minZ = 0.05;
+                camera.attachControl(this.canvas, true);
+                camera.keysUp.push(87);
+                camera.keysDown.push(83);
+                camera.keysLeft.push(65);
+                camera.keysRight.push(68);
+                camera.checkCollisions = true;
+                camera.ellipsoid = new BABYLON.Vector3(0.6, 0.875, 0.6);
+                camera.ellipsoid.y = 2.9375;
+                return camera;
+            }
+            
+            createAmbientLight() {
+                const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), this.scene);
+                light.intensity = 0.3;
+                light.diffuse = new BABYLON.Color3(0.8, 0.8, 0.8);
+                light.groundColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+            }
+            
+            createSunLight() {
+                const sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-0.5, -1, 0.25), this.scene);
+                sun.intensity = 0.7;
+                sun.position = new BABYLON.Vector3(0, 150, 0);
+                sun.shadowMinZ = 70;
+                sun.shadowMaxZ = 200;
+                
+                const shadowGenerator = new BABYLON.ShadowGenerator(2048, sun);
+                shadowGenerator.usePercentageCloserFiltering = true;
+                shadowGenerator.usePoissonSampling = true;
+                shadowGenerator.bias = 0.005;
+                shadowGenerator.normalBias = 0.005;
+                shadowGenerator.blurKernel = 128;
+                return shadowGenerator;
+            }
+        }
+        
+        // --- 🌍 Classe per il caricamento dei Dati del Mondo ---
+        class WorldLoader {
+            constructor() {
+                this.loadedRegions = new Set();
+                this.regionsData = new Map();
+            }
+            
+            async fetchAndStoreRegionData(regionX, regionY, regionZ) {
+                const regionKey = `${regionX}_${regionY}_${regionZ}`;
+                if (this.loadedRegions.has(regionKey)) {
+                    return;
+                }
+                
+                try {
+                    const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
+                    console.log(`WorldLoader: Caricamento del file ${regionPath}...`);
+                    const response = await fetch(regionPath);
+                    if (!response.ok) {
+                        console.error(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
+                        this.loadedRegions.add(regionKey);
+                        return;
+                    }
+                    const buffer = await response.arrayBuffer();
+                    console.log(`WorldLoader: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+                    this.loadedRegions.add(regionKey);
+                    this.regionsData.set(regionKey, buffer);
+                } catch (error) {
+                    console.error(`Errore durante il caricamento del file della regione (${regionX}, ${regionY}, ${regionZ}):`, error);
+                }
+            }
+            
+            getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
+                const dataView = new DataView(buffer);
+                const headerSize = 11;
+                const chunkIndex = chunkZ + REGION_DIMENSION * (chunkY + REGION_DIMENSION * chunkX);
+                const offsetIndex = headerSize + chunkIndex * 5;
+                const chunkFileOffset = (dataView.getUint8(offsetIndex) << 16) | (dataView.getUint8(offsetIndex + 1) << 8) | dataView.getUint8(offsetIndex + 2);
+
+                if (chunkFileOffset === 0) {
+                    return null;
+                }
+                const chunkSizeInBytes = CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
+                const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + chunkSizeInBytes);
+                return new Uint8Array(chunkBuffer);
+            }
+            
+            getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
+                const regionKey = `${regionX}_${regionY}_${regionZ}`;
+                if (!this.regionsData.has(regionKey)) {
+                    return null;
+                }
+                const regionBuffer = this.regionsData.get(regionKey);
+                return this.getChunkDataFromRegionBuffer(regionBuffer, chunkX, chunkY, chunkZ);
+            }
+        }
+
+        // --- 🧱 Classe per la gestione dei Chunk e delle Mesh ---
+        class ChunkManager {
+            constructor(scene, shadowGenerator, worldLoader) {
+                this.scene = scene;
+                this.shadowGenerator = shadowGenerator;
+                this.worldLoader = worldLoader;
+                this.workers = new Map();
+                this.sceneMaterials = {};
+                this.loadedChunks = new Set();
+            }
+
+            getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
+                if (!this.sceneMaterials[voxelType]) {
+                    const material = new BABYLON.StandardMaterial(`material_${voxelType}`, this.scene);
+                    
+                    if (Number(voxelType) === 3) {
+                        material.useVertexColors = true;
+                        material.bumpTexture = new BABYLON.Texture("./texture/m_grass.png", this.scene);
+                        material.bumpTexture.level = 0.5;
+                        material.bumpTexture.uScale = 2.0;
+                        material.bumpTexture.vScale = 2.0;
+                        material.useParallax = true;
+                    } else {
+                        material.useVertexColors = true;
+                    }
+
+                    if (isTransparent) {
+                        material.alpha = materialAlpha;
+                        material.hasAlpha = true;
+                        material.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+                        material.backFaceCulling = false;
+                    }
+                    this.sceneMaterials[voxelType] = material;
+                }
+                return this.sceneMaterials[voxelType];
+            }
+            
+            async loadChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
+                const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                if (this.loadedChunks.has(chunkKey)) {
+                    return;
+                }
+                
+                await this.worldLoader.fetchAndStoreRegionData(regionX, regionY, regionZ);
+                
+                const chunkData = this.worldLoader.getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
+
+                if (chunkData === null) {
+                    this.loadedChunks.add(chunkKey);
+                    return;
+                }
+                
+                const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+                const worker = new Worker('./src/worker/worker_structured.js');
+                this.workers.set(workerId, worker);
+                
+                worker.onmessage = (event) => {
+                    const { type, meshDataByVoxelType, voxelOpacity } = event.data;
+                    
+                    this.loadedChunks.add(chunkKey);
+                    
+                    if (type === 'meshGenerated' && meshDataByVoxelType) {
+                        const worldX = (regionX * REGION_DIMENSION + chunkX) * CHUNK_SIZE;
+                        const worldY = (regionY * REGION_DIMENSION + chunkY) * CHUNK_SIZE;
+                        const worldZ = (regionZ * REGION_DIMENSION + chunkZ) * CHUNK_SIZE;
+                        for (const voxelType in meshDataByVoxelType) {
+                            const meshData = meshDataByVoxelType[voxelType];
+                            if (meshData.positions.length > 0) {
+                                const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+                                const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${voxelType}`;
+                                const mesh = new BABYLON.Mesh(meshName, this.scene);
+                                const vertexData = new BABYLON.VertexData();
+                                
+                                vertexData.positions = meshData.positions;
+                                vertexData.indices = meshData.indices;
+                                vertexData.colors = meshData.colors;
+                                vertexData.normals = meshData.normals;
+                                vertexData.uvs = meshData.uvs;
+                                
+                                vertexData.applyToMesh(mesh);
+                                
+                                mesh.checkCollisions = true;
+
+                                const materialAlpha = isTransparent ? meshData.colors[3] : 1.0;
+                                mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
+
+                                mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+                                
+                                if (voxelOpacity[voxelType] === 'opaque') {
+                                    this.shadowGenerator.addShadowCaster(mesh);
+                                    mesh.receiveShadows = true;
+                                }
+                            }
+                        }
+                        worker.terminate();
+                        this.workers.delete(workerId);
+                    }
+                };
+                
+                worker.postMessage({
+                    type: 'generateMeshFromChunk',
+                    chunkData: chunkData.buffer,
+                    chunkX, chunkY, chunkZ
+                }, [chunkData.buffer]);
+            }
+
+            // Metodo per il caricamento iniziale di un'intera regione
+            async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
+                await this.worldLoader.fetchAndStoreRegionData(regionX, regionY, regionZ);
+                
+                const loadingPromises = [];
+                for (let chunkX = 0; chunkX < REGION_DIMENSION; chunkX++) {
+                    for (let chunkY = 0; chunkY < REGION_DIMENSION; chunkY++) {
+                        for (let chunkZ = 0; chunkZ < REGION_DIMENSION; chunkZ++) {
+                            loadingPromises.push(this.loadChunk(regionX, regionY, regionZ, chunkX, chunkY, chunkZ));
+                        }
+                    }
+                }
+                await Promise.all(loadingPromises);
+            }
+
+            findChunksToLoad(playerPosition) {
+                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
+
+                const currentChunkX = Math.floor((playerPosition.x - currentRegionX * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                
+                const chunksToLoad = [];
+                
+                for (let x = -1; x <= 1; x++) {
+                    for (let y = -1; y <= 1; y++) {
+                        for (let z = -1; z <= 1; z++) {
+                            const worldChunkX = currentChunkX + x;
+                            const worldChunkY = currentChunkY + y;
+                            const worldChunkZ = currentChunkZ + z;
+                            
+                            const adjacentRegionX = currentRegionX + Math.floor(worldChunkX / REGION_DIMENSION);
+                            const adjacentRegionY = currentRegionY + Math.floor(worldChunkY / REGION_DIMENSION);
+                            const adjacentRegionZ = currentRegionZ + Math.floor(worldChunkZ / REGION_DIMENSION);
+
+                            const adjacentChunkX = (worldChunkX % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            const adjacentChunkY = (worldChunkY % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            const adjacentChunkZ = (worldChunkZ % REGION_DIMENSION + REGION_DIMENSION) % REGION_DIMENSION;
+                            
+                            const adjacentChunkKey = `${adjacentRegionX}_${adjacentRegionY}_${adjacentRegionZ}_${adjacentChunkX}_${adjacentChunkY}_${adjacentChunkZ}`;
+                            if (!this.loadedChunks.has(adjacentChunkKey)) {
+                                chunksToLoad.push({
+                                    regionX: adjacentRegionX,
+                                    regionY: adjacentRegionY,
+                                    regionZ: adjacentRegionZ,
+                                    chunkX: adjacentChunkX,
+                                    chunkY: adjacentChunkY,
+                                    chunkZ: adjacentChunkZ
+                                });
+                            }
+                        }
+                    }
+                }
+                return chunksToLoad;
+            }
+            
+            async loadMissingChunks(chunksToLoad) {
+                const loadingPromises = [];
+                for (const chunk of chunksToLoad) {
+                    loadingPromises.push(this.loadChunk(chunk.regionX, chunk.regionY, chunk.regionZ, chunk.chunkX, chunk.chunkY, chunk.chunkZ));
+                }
+                await Promise.all(loadingPromises);
+            }
+            
+            printDebugInfo(playerPosition, chunksToLoad, loadedRegions) {
+                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
+
+                const currentChunkX = Math.floor((playerPosition.x - currentRegionX * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+
+                console.log("-----------------------------------------");
+                console.log(`Posizione Camera: X: ${playerPosition.x}, Y: ${playerPosition.y}, Z: ${playerPosition.z}`);
+                const currentRegionKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}`;
+                console.log(`Regione Attuale: (${currentRegionX}, ${currentRegionY}, ${currentRegionZ}) - Caricata: ${loadedRegions.has(currentRegionKey)}`);
+                const currentChunkKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}_${currentChunkX}_${currentChunkY}_${currentChunkZ}`;
+                console.log(`Chunk Attuale: (${currentChunkX}, ${currentChunkY}, ${currentChunkZ}) - Caricato: ${this.loadedChunks.has(currentChunkKey)}`);
+                console.log("-----------------------------------------");
+                console.log(`Trovati ${chunksToLoad.length} chunk da caricare nelle vicinanze.`);
+                console.log("-----------------------------------------");
+            }
+        }
+        
+        // --- 🕹️ Classe Principale del Gioco ---
+        class Game {
+            constructor(canvasId) {
+                this.canvas = document.getElementById(canvasId);
+                this.engine = new BABYLON.Engine(this.canvas, true);
+                this.scene = new BABYLON.Scene(this.engine);
+                
+                this.sceneInitializer = new SceneInitializer(this.scene, this.engine, this.canvas);
+                this.player = this.sceneInitializer.createCamera();
+                this.sceneInitializer.initializeScene();
+                
+                this.worldLoader = new WorldLoader();
+                this.chunkManager = new ChunkManager(this.scene, this.sceneInitializer.shadowGenerator, this.worldLoader);
+                
+                this.lastChunk = { x: null, y: null, z: null };
+            }
+
+            async start() {
+                // Caricamento iniziale di due regioni all'avvio
+                await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
+                await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
+                
+                this.engine.runRenderLoop(() => {
+                    this.scene.render();
+                    this.checkCameraPosition();
+                });
+
+                window.addEventListener("resize", () => {
+                    this.engine.resize();
+                });
+            }
+
+            checkCameraPosition() {
+                const playerPosition = this.player.position;
+                const currentRegionX = Math.floor(playerPosition.x / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionY = Math.floor(playerPosition.y / (CHUNK_SIZE * REGION_DIMENSION));
+                const currentRegionZ = Math.floor(playerPosition.z / (CHUNK_SIZE * REGION_DIMENSION));
+
+                const currentChunkX = Math.floor((playerPosition.x - currentRegionX * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkY = Math.floor((playerPosition.y - currentRegionY * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+                const currentChunkZ = Math.floor((playerPosition.z - currentRegionZ * CHUNK_SIZE * REGION_DIMENSION) / CHUNK_SIZE);
+
+                if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
+                    const chunksToLoad = this.chunkManager.findChunksToLoad(playerPosition);
+                    if (chunksToLoad.length > 0) {
+                        this.chunkManager.loadMissingChunks(chunksToLoad);
+                    }
+                    this.chunkManager.printDebugInfo(playerPosition, chunksToLoad, this.worldLoader.loadedRegions);
+                    this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
+                }
+            }
+        }
+        
+        const game = new Game("renderCanvas");
+        game.start();
+    </script>
+</body>
+</html>
