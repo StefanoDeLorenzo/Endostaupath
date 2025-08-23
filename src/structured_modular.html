@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Voxel Engine con Babylon.js (modulare)</title>
+  <style>
+    html, body, canvas { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+  </style>
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+  <canvas id="renderCanvas"></canvas>
+
+  <script type="module">
+    import { Game } from './src/app/game.js';
+    const game = new Game('renderCanvas');
+    game.start();
+  </script>
+</body>
+</html>
