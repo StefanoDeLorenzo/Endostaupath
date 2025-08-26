@@ -48,9 +48,11 @@ export class Game {
       
       const chunksToLoad = this.chunkManager.findChunksToLoad(p);
       if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
-      this.chunkManager.unloadFarChunks(p);
+      
       this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
       this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
     }
+
+    this.chunkManager.unloadFarChunks(p);
   }
 }
