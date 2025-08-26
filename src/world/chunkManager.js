@@ -193,7 +193,8 @@ export class ChunkManager {
 
     unloadChunk(chunkKey) {
         // Rimuovi le mesh associate
-        const meshes = this.scene.meshes.filter(mesh => mesh.name.startsWith(chunkKey));
+        const meshPrefix = `chunk_${chunkKey}`;
+        const meshes = this.scene.meshes.filter(mesh => mesh.name.startsWith(meshPrefix));
         for (const mesh of meshes) {
             mesh.dispose();
         }
