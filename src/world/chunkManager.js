@@ -211,6 +211,41 @@ export class ChunkManager {
         this.loadedChunks.delete(chunkKey);
     }
 
+    // Rimove tutte le regioni lontane che non hanno più chunk caricati - in realtà senza controllare che i chunk siano caricati o no, calcolo solo la distanza
+    unloadFarRegions(playerPosition) {
+        const maxDistance = REGION_SCHEMA.REGION_SPAN * 4;
+        
+        // Creiamo una copia del set per evitare errori durante l'iterazione
+        for (const regionKey of [...this.worldLoader.loadedRegions]) {
+            const [rx, ry, rz] = regionKey.split('_').map(Number);
+            
+            const regionWorldX = rx * REGION_SCHEMA.REGION_SPAN + REGION_SCHEMA.REGION_SPAN / 2;
+            const regionWorldY = ry * REGION_SCHEMA.REGION_SPAN + REGION_SCHEMA.REGION_SPAN / 2;
+            const regionWorldZ = rz * REGION_SCHEMA.REGION_SPAN + REGION_SCHEMA.REGION_SPAN / 2;
+            
+            const dx = playerPosition.x - regionWorldX;
+            const dy = playerPosition.y - regionWorldY;
+            const dz = playerPosition.z - regionWorldZ;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            
+            if (dist > maxDistance) {
+                this.unloadRegionIfAllChunksUnloaded(regionKey);
+            }
+        }
+    }
+
+    unloadRegionIfAllChunksUnloaded(regionKey) {
+        // Controlla se esistono ancora chunk caricati che appartengono a questa regione
+        const hasLoadedChunks = [...this.loadedChunks].some(chunkKey => chunkKey.startsWith(regionKey));
+        
+        // Se non ci sono più chunk di questa regione in memoria, scarichiamo la regione
+        if (!hasLoadedChunks) {
+            this.worldLoader.regionsData.delete(regionKey);
+            this.worldLoader.loadedRegions.delete(regionKey);
+            console.log(`Regione ${regionKey} scaricata dalla memoria.`);
+        }
+    }
+
   printDebugInfo(playerPosition, chunksToLoad, loadedRegions) {
     const currentRegionX = Math.floor(playerPosition.x / REGION_SCHEMA.REGION_SPAN);
     const currentRegionY = Math.floor(playerPosition.y / REGION_SCHEMA.REGION_SPAN);

@@ -54,5 +54,6 @@ export class Game {
     }
 
     this.chunkManager.unloadFarChunks(p);
+    this.chunkManager.unloadFarRegions(p);
   }
 }
