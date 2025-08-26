@@ -45,8 +45,10 @@ export class Game {
     const currentChunkZ = Math.floor((p.z - currentRegionZ * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
 
     if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
+      
       const chunksToLoad = this.chunkManager.findChunksToLoad(p);
       if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
+      this.chunkManager.unloadFarChunks(p);
       this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
       this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
     }

@@ -161,6 +161,42 @@ export class ChunkManager {
     ));
   }
 
+  
+    unloadFarChunks(playerPosition) {
+    const maxDistance = REGION_SCHEMA.REGION_SPAN * 3; // es. 3 regioni = 360 unità
+    for (const chunkKey of this.loadedChunks) {
+        const [rx, ry, rz, cx, cy, cz] = chunkKey.split('_').map(Number);
+        const chunkWorldX = (rx * REGION_SCHEMA.GRID + cx) * REGION_SCHEMA.CHUNK_SIZE;
+        const chunkWorldY = (ry * REGION_SCHEMA.GRID + cy) * REGION_SCHEMA.CHUNK_SIZE;
+        const chunkWorldZ = (rz * REGION_SCHEMA.GRID + cz) * REGION_SCHEMA.CHUNK_SIZE;
+        const dx = playerPosition.x - chunkWorldX;
+        const dy = playerPosition.y - chunkWorldY;
+        const dz = playerPosition.z - chunkWorldZ;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist > maxDistance) {
+        this.unloadChunk(chunkKey);
+        }
+    }
+    }
+
+    unloadChunk(chunkKey) {
+        // Rimuovi le mesh associate
+        const meshes = this.scene.meshes.filter(mesh => mesh.name.startsWith(chunkKey));
+        for (const mesh of meshes) {
+            mesh.dispose();
+        }
+
+        // Termina il worker se esiste
+        const worker = this.workers.get(chunkKey);
+        if (worker) {
+            worker.terminate();
+            this.workers.delete(chunkKey); 
+        }
+        
+        // Rimuovi il chunk dalla lista
+        this.loadedChunks.delete(chunkKey);
+    }
+
   printDebugInfo(playerPosition, chunksToLoad, loadedRegions) {
     const currentRegionX = Math.floor(playerPosition.x / REGION_SCHEMA.REGION_SPAN);
     const currentRegionY = Math.floor(playerPosition.y / REGION_SCHEMA.REGION_SPAN);
