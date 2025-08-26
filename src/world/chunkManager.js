@@ -163,20 +163,32 @@ export class ChunkManager {
 
   
     unloadFarChunks(playerPosition) {
-    const maxDistance = REGION_SCHEMA.REGION_SPAN * 3; // es. 3 regioni = 360 unità
-    for (const chunkKey of this.loadedChunks) {
-        const [rx, ry, rz, cx, cy, cz] = chunkKey.split('_').map(Number);
-        const chunkWorldX = (rx * REGION_SCHEMA.GRID + cx) * REGION_SCHEMA.CHUNK_SIZE;
-        const chunkWorldY = (ry * REGION_SCHEMA.GRID + cy) * REGION_SCHEMA.CHUNK_SIZE;
-        const chunkWorldZ = (rz * REGION_SCHEMA.GRID + cz) * REGION_SCHEMA.CHUNK_SIZE;
-        const dx = playerPosition.x - chunkWorldX;
-        const dy = playerPosition.y - chunkWorldY;
-        const dz = playerPosition.z - chunkWorldZ;
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist > maxDistance) {
-        this.unloadChunk(chunkKey);
+        const maxDistance = REGION_SCHEMA.REGION_SPAN * 3;
+        const chunksToUnload = [];
+
+        // Prima, identifica tutti i chunk da scaricare
+        for (const chunkKey of this.loadedChunks) {
+            const [rx, ry, rz, cx, cy, cz] = chunkKey.split('_').map(Number);
+            
+            // Calcola la posizione del centro del chunk
+            const chunkWorldX = (rx * REGION_SCHEMA.GRID + cx) * REGION_SCHEMA.CHUNK_SIZE + REGION_SCHEMA.CHUNK_SIZE / 2;
+            const chunkWorldY = (ry * REGION_SCHEMA.GRID + cy) * REGION_SCHEMA.CHUNK_SIZE + REGION_SCHEMA.CHUNK_SIZE / 2;
+            const chunkWorldZ = (rz * REGION_SCHEMA.GRID + cz) * REGION_SCHEMA.CHUNK_SIZE + REGION_SCHEMA.CHUNK_SIZE / 2;
+            
+            const dx = playerPosition.x - chunkWorldX;
+            const dy = playerPosition.y - chunkWorldY;
+            const dz = playerPosition.z - chunkWorldZ;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            
+            if (dist > maxDistance) {
+                chunksToUnload.push(chunkKey);
+            }
         }
-    }
+
+        // Poi, scarica i chunk identificati
+        for (const chunkKey of chunksToUnload) {
+            this.unloadChunk(chunkKey);
+        }
     }
 
     unloadChunk(chunkKey) {
@@ -186,11 +198,12 @@ export class ChunkManager {
             mesh.dispose();
         }
 
-        // Termina il worker se esiste
-        const worker = this.workers.get(chunkKey);
+        // La chiave del worker è "chunk_" + la chunkKey
+        const workerId = `chunk_${chunkKey}`;
+        const worker = this.workers.get(workerId);
         if (worker) {
             worker.terminate();
-            this.workers.delete(chunkKey); 
+            this.workers.delete(workerId);
         }
         
         // Rimuovi il chunk dalla lista
