@@ -188,7 +188,7 @@ self.onmessage = async (event) => {
             self.postMessage({
                 type: 'meshGenerated',
                 chunkX, chunkY, chunkZ,
-                regionX, regionY, regionZ,
+                //regionX, regionY, regionZ,
                 meshDataByVoxelType: meshData,
                 voxelOpacity: VoxelOpacity
             }, transferableObjects);
