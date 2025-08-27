@@ -48,11 +48,9 @@ export class WorldLoader {
     return new Uint8Array(chunkBuffer);
   }
 
-  async getChunkData(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
-    await this.fetchAndStoreRegionData(regionX, regionY, regionZ);
+  getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
     const regionKey = `${regionX}_${regionY}_${regionZ}`;
     if (!this.regionsData.has(regionKey)) return null;
-
     const regionBuffer = this.regionsData.get(regionKey);
     return this.getChunkDataFromRegionBuffer(regionBuffer, chunkX, chunkY, chunkZ);
   }
