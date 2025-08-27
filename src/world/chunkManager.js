@@ -149,7 +149,7 @@ export class ChunkManager {
     const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
     if (this.loadedChunks.has(chunkKey)) return;
 
-    const chunkData = await this.worldLoader.getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
+    const chunkData = await this.worldLoader.getChunkData(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
     if (!chunkData) {
       this.loadedChunks.add(chunkKey);
       return;
