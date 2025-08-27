@@ -43,6 +43,7 @@ export class ChunkManager {
             this.createMeshFromData(meshDataByVoxelType, chunkKey, voxelOpacity, regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
             this.loadedChunks.add(chunkKey);
             
+            // Segna il worker come libero e processa il prossimo lavoro
             this.workerStatus.delete(chunkKey);
             this.workerStatus.set(workerId, null);
             this.processQueue();
@@ -59,7 +60,7 @@ export class ChunkManager {
         if (task) {
           const { chunkData, chunkKey, regionX, regionY, regionZ, chunkX, chunkY, chunkZ } = task;
           
-          this.workerStatus.set(worker.id, chunkKey);
+          this.workerStatus.set(worker.id, chunkKey); // Segna il worker come occupato
           this.workerStatus.set(chunkKey, worker.id);
           worker.postMessage({
               type: 'generateMeshFromChunk',
@@ -111,7 +112,7 @@ export class ChunkManager {
   
     const worldX = (regionX * REGION_SCHEMA.GRID + chunkX) * REGION_SCHEMA.CHUNK_SIZE;
     const worldY = (regionY * REGION_SCHEMA.GRID + chunkY) * REGION_SCHEMA.CHUNK_SIZE;
-    const worldZ = (regionZ * REGION_SCHEMA.GRID + chunkZ) * REGION_SCHEMA.CHUNK_SIZE;
+    const worldZ = (rz * REGION_SCHEMA.GRID + cz) * REGION_SCHEMA.CHUNK_SIZE;
 
     for (const voxelType in meshDataByVoxelType) {
       const md = meshDataByVoxelType[voxelType];
@@ -131,7 +132,7 @@ export class ChunkManager {
       vd.applyToMesh(mesh);
       
       mesh.checkCollisions = true;
-      const materialAlpha = isTransparent ? VoxelColors[voxelType][3] : 1.0;
+      const materialAlpha = isTransparent ? md.colors[3] : 1.0;
       mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
       
       mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
@@ -156,12 +157,6 @@ export class ChunkManager {
 
     this.taskQueue.push({ chunkData, chunkKey, regionX, regionY, regionZ, chunkX, chunkY, chunkZ });
     this.processQueue();
-  }
-
-  loadMissingChunks(chunksToLoad) {
-    for (const chunk of chunksToLoad) {
-        this.loadChunkAndMesh(chunk.regionX, chunk.regionY, chunk.regionZ, chunk.chunkX, chunk.chunkY, chunk.chunkZ);
-    }
   }
 
   async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {
