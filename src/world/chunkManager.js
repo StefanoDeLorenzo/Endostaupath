@@ -162,7 +162,7 @@ export class ChunkManager {
     await Promise.all(tasks);
   }
 
-  findChunksToLoad(playerPosition) {
+  findChunksToLoad(playerPosition, radius = 4) {
     // Regione corrente basata su REGION_SPAN (4*30)
     const currentRegionX = Math.floor(playerPosition.x / REGION_SCHEMA.REGION_SPAN);
     const currentRegionY = Math.floor(playerPosition.y / REGION_SCHEMA.REGION_SPAN);
@@ -175,29 +175,30 @@ export class ChunkManager {
 
     const chunksToLoad = [];
 
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dz = -1; dz <= 1; dz++) {
-          const wx = currentChunkX + dx;
-          const wy = currentChunkY + dy;
-          const wz = currentChunkZ + dz;
+    // I cicli for ora si basano sul raggio visivo
+    for (let dx = -radius; dx <= radius; dx++)
+        for (let dy = -radius; dy <= radius; dy++)
+            for (let dz = -radius; dz <= radius; dz++) {
+                const wx = currentChunkX + dx;
+                const wy = currentChunkY + dy;
+                const wz = currentChunkZ + dz;
 
-          const adjRegionX = currentRegionX + Math.floor(wx / REGION_SCHEMA.GRID);
-          const adjRegionY = currentRegionY + Math.floor(wy / REGION_SCHEMA.GRID);
-          const adjRegionZ = currentRegionZ + Math.floor(wz / REGION_SCHEMA.GRID);
+                const adjRegionX = currentRegionX + Math.floor(wx / REGION_SCHEMA.GRID);
+                const adjRegionY = currentRegionY + Math.floor(wy / REGION_SCHEMA.GRID);
+                const adjRegionZ = currentRegionZ + Math.floor(wz / REGION_SCHEMA.GRID);
 
-          const adjChunkX = (wx % REGION_SCHEMA.GRID + REGION_SCHEMA.GRID) % REGION_SCHEMA.GRID;
-          const adjChunkY = (wy % REGION_SCHEMA.GRID + REGION_SCHEMA.GRID) % REGION_SCHEMA.GRID;
-          const adjChunkZ = (wz % REGION_SCHEMA.GRID + REGION_SCHEMA.GRID) % REGION_SCHEMA.GRID;
+                const adjChunkX = (wx % REGION_SCHEMA.GRID + REGION_SCHEMA.GRID) % REGION_SCHEMA.GRID;
+                const adjChunkY = (wy % REGION_SCHEMA.GRID + REGION_SCHEMA.GRID) % REGION_SCHEMA.GRID;
+                const adjChunkZ = (wz % REGION_SCHEMA.GRID + REGION_SCHEMA.GRID) % REGION_SCHEMA.GRID;
 
-          const key = `${adjRegionX}_${adjRegionY}_${adjRegionZ}_${adjChunkX}_${adjChunkY}_${adjChunkZ}`;
-          if (!this.loadedChunks.has(key)) {
-            chunksToLoad.push({
-              regionX: adjRegionX, regionY: adjRegionY, regionZ: adjRegionZ,
-              chunkX: adjChunkX,   chunkY: adjChunkY,   chunkZ: adjChunkZ
-            });
-          }
-        }
+                const key = `${adjRegionX}_${adjRegionY}_${adjRegionZ}_${adjChunkX}_${adjChunkY}_${adjChunkZ}`;
+                if (!this.loadedChunks.has(key)) {
+                    chunksToLoad.push({
+                        regionX: adjRegionX, regionY: adjRegionY, regionZ: adjRegionZ,
+                        chunkX: adjChunkX,   chunkY: adjChunkY,   chunkZ: adjChunkZ
+                    });
+                }
+            }
 
     return chunksToLoad;
   }
