@@ -1,6 +1,5 @@
 // src/world/chunkManager.js
 import { REGION_SCHEMA } from './config.js';
-import { VoxelColors } from '../worker/worker_structured.js'; // MODIFICA: AGGIUNTO l'import
 
 export class ChunkManager {
   constructor(scene, shadowGenerator, worldLoader) {

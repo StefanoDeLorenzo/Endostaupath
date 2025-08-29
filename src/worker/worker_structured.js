@@ -18,7 +18,7 @@ const VOXEL_TYPES = {
 // ============================================================================
 const MESHING_ALGORITHM = 'VOXEL'; // O 'GREEDY'
 
-export const VoxelColors = {
+const VoxelColors = {
     [VOXEL_TYPES.Dirt]: [0.55, 0.45, 0.25, 1.0], // Marrone
     [VOXEL_TYPES.Grass]: [0.2, 0.6, 0.2, 1.0], // Verde
     [VOXEL_TYPES.Rock]: [0.4, 0.4, 0.4, 1.0], // Grigio
@@ -29,7 +29,7 @@ export const VoxelColors = {
     [VOXEL_TYPES.Air]: [0.0, 0.0, 0.0, 0.0] // Trasparente
 };
 
-export const VoxelOpacity = {
+const VoxelOpacity = {
     [VOXEL_TYPES.Air]: 'transparent',
     [VOXEL_TYPES.Cloud]: 'transparent',
     [VOXEL_TYPES.Lava]: 'transparent',
@@ -180,8 +180,7 @@ self.onmessage = async (event) => {
                     meshData[voxelType].positions.buffer,
                     meshData[voxelType].normals.buffer,
                     meshData[voxelType].indices.buffer,
-                    meshData[voxelType].colors.buffer,
-                    meshData[voxelType].uvs.buffer
+                    meshData[voxelType].colors.buffer
                 );
             }
 
