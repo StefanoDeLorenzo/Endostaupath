@@ -22,8 +22,8 @@ export class Game {
 
   async start() {
     // Caricamento iniziale di due regioni all'avvio (come nel tuo)
-    //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
-    //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
+    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
+    await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
     this.engine.runRenderLoop(() => {
       this.scene.render();
