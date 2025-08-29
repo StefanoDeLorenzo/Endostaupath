@@ -7,92 +7,9 @@ export class ChunkManager {
     this.shadowGenerator = shadowGenerator;
     this.worldLoader = worldLoader;
 
-    // MODIFICA: Thread pool per la generazione della mesh
-    this.workerPool = [];
-    this.taskQueue = [];
-    this.POOL_SIZE = 4; // navigator.hardwareConcurrency || 4; // Dimensione del pool: usa il numero di core disponibili oppure 4 di default
-    this.workers = new Map(); // Mappa per tracciare i worker attivi per chunk
-
+    this.workers = new Map();
     this.sceneMaterials = {};
     this.loadedChunks = new Set();
-    
-    // MODIFICA: Inizializza il pool di worker
-    this.initializeWorkerPool();
-  }
-
-  initializeWorkerPool() {
-    for (let i = 0; i < this.POOL_SIZE; i++) {
-        const worker = new Worker(new URL('../worker/worker_structured.js', import.meta.url), { type: 'module' });
-        worker.isFree = true; // Aggiunge una proprietà per tracciare lo stato
-        this.workerPool.push(worker);
-        
-        // Collega un listener generico che gestisce i messaggi di tutti i worker
-        worker.onmessage = this.onWorkerMessage.bind(this);
-    }
-  }
-  // MODIFICA: Gestisce i messaggi in arrivo dai worker
-  onWorkerMessage(event) {
-    const { type, meshDataByVoxelType, chunkX, chunkY, chunkZ, regionX, regionY, regionZ, voxelOpacity } = event.data;
-    
-    // Trova il worker che ha inviato il messaggio
-    const worker = this.workerPool.find(w => w === event.currentTarget);
-    worker.isFree = true;
-    
-    const chunkKey = `${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
-    this.loadedChunks.add(chunkKey);
-
-    if (type === 'meshGenerated' && meshDataByVoxelType) {
-        const worldX = (regionX * REGION_SCHEMA.GRID + chunkX) * REGION_SCHEMA.CHUNK_SIZE;
-        const worldY = (regionY * REGION_SCHEMA.GRID + chunkY) * REGION_SCHEMA.CHUNK_SIZE;
-        const worldZ = (regionZ * REGION_SCHEMA.GRID + chunkZ) * REGION_SCHEMA.CHUNK_SIZE;
-
-        for (const voxelType in meshDataByVoxelType) {
-            const md = meshDataByVoxelType[voxelType];
-            if (!md.positions.length) continue;
-
-            const isTransparent = (voxelOpacity[voxelType] === 'transparent');
-            const meshName = `chunk_${chunkKey}_${voxelType}`;
-            const mesh = new BABYLON.Mesh(meshName, this.scene);
-
-            const vd = new BABYLON.VertexData();
-            vd.positions = md.positions;
-            vd.indices   = md.indices;
-            vd.colors    = md.colors;
-            vd.normals   = md.normals;
-            vd.uvs       = md.uvs;
-            vd.applyToMesh(mesh);
-
-            mesh.checkCollisions = true;
-
-            const materialAlpha = isTransparent ? md.colors[3] : 1.0;
-            mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
-
-            mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
-
-            if (voxelOpacity[voxelType] === 'opaque') {
-                this.shadowGenerator.addShadowCaster(mesh);
-                mesh.receiveShadows = true;
-            }
-        }
-    }
-    this.processQueue();
-  }
-
-  // MODIFICA: Gestisce la coda delle richieste in attesa
-  processQueue() {
-    if (this.taskQueue.length > 0) {
-      const freeWorker = this.workerPool.find(w => w.isFree);
-      if (freeWorker) {
-          const task = this.taskQueue.shift();
-          this.submitTaskToWorker(freeWorker, task);
-      }
-    }
-  }
-
-  // MODIFICA: Invia un task a un worker specifico
-  submitTaskToWorker(worker, task) {
-    worker.isFree = false;
-    worker.postMessage(task, [task.chunkData]);
   }
 
   getOrCreateMaterial(voxelType, isTransparent, materialAlpha = 1.0) {
@@ -129,25 +46,61 @@ export class ChunkManager {
     await this.worldLoader.fetchAndStoreRegionData(regionX, regionY, regionZ);
     const chunkData = this.worldLoader.getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ);
 
-    if (chunkData === null) {
-      this.loadedChunks.add(chunkKey);
-      return;
-    }
+    if (chunkData === null) { this.loadedChunks.add(chunkKey); return; }
 
-    // MODIFICA: Trova un worker libero o aggiungi il task alla coda
-    const freeWorker = this.workerPool.find(w => w.isFree);
-    const task = {
-        type: 'generateMeshFromChunk',
-        chunkData: chunkData.buffer,
-        chunkX, chunkY, chunkZ,
-        regionX, regionY, regionZ
+    const workerId = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}`;
+    const worker = new Worker('./src/worker/worker_structured.js');
+    this.workers.set(workerId, worker);
+
+    worker.onmessage = (event) => {
+      const { type, meshDataByVoxelType, voxelOpacity } = event.data;
+
+      this.loadedChunks.add(chunkKey);
+
+      if (type === 'meshGenerated' && meshDataByVoxelType) {
+        // Posizione mondo: (region*GRID + chunk) * CHUNK_SIZE (logico 30)
+        const worldX = (regionX * REGION_SCHEMA.GRID + chunkX) * REGION_SCHEMA.CHUNK_SIZE;
+        const worldY = (regionY * REGION_SCHEMA.GRID + chunkY) * REGION_SCHEMA.CHUNK_SIZE;
+        const worldZ = (regionZ * REGION_SCHEMA.GRID + chunkZ) * REGION_SCHEMA.CHUNK_SIZE;
+
+        for (const voxelType in meshDataByVoxelType) {
+          const md = meshDataByVoxelType[voxelType];
+          if (!md.positions.length) continue;
+
+          const isTransparent = (voxelOpacity[voxelType] === 'transparent');
+          const meshName = `chunk_${regionX}_${regionY}_${regionZ}_${chunkX}_${chunkY}_${chunkZ}_${voxelType}`;
+          const mesh = new BABYLON.Mesh(meshName, this.scene);
+
+          const vd = new BABYLON.VertexData();
+          vd.positions = md.positions;
+          vd.indices   = md.indices;
+          vd.colors    = md.colors;
+          vd.normals   = md.normals;
+          vd.uvs       = md.uvs;
+          vd.applyToMesh(mesh);
+
+          mesh.checkCollisions = true;
+
+          const materialAlpha = isTransparent ? md.colors[3] : 1.0;
+          mesh.material = this.getOrCreateMaterial(voxelType, isTransparent, materialAlpha);
+
+          mesh.position = new BABYLON.Vector3(worldX, worldY, worldZ);
+
+          if (voxelOpacity[voxelType] === 'opaque') {
+            this.shadowGenerator.addShadowCaster(mesh);
+            mesh.receiveShadows = true;
+          }
+        }
+        worker.terminate();
+        this.workers.delete(workerId);
+      }
     };
 
-    if (freeWorker) {
-        this.submitTaskToWorker(freeWorker, task);
-    } else {
-        this.taskQueue.push(task);
-    }
+    worker.postMessage({
+      type: 'generateMeshFromChunk',
+      chunkData: chunkData.buffer,
+      chunkX, chunkY, chunkZ
+    }, [chunkData.buffer]);
   }
 
   async loadRegionAndMeshAllChunks(regionX, regionY, regionZ) {

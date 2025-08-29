@@ -153,7 +153,7 @@ function generateMeshForChunk_Voxel(chunkData) {
 }
 
 self.onmessage = async (event) => {
-    const { type, chunkData, chunkX, chunkY, chunkZ, regionX, regionY, regionZ } = event.data;
+    const { type, chunkData, chunkX, chunkY, chunkZ } = event.data;
 
     if (type === 'generateMeshFromChunk') {
         try {
@@ -188,7 +188,6 @@ self.onmessage = async (event) => {
             self.postMessage({
                 type: 'meshGenerated',
                 chunkX, chunkY, chunkZ,
-                regionX, regionY, regionZ,
                 meshDataByVoxelType: meshData,
                 voxelOpacity: VoxelOpacity
             }, transferableObjects);
