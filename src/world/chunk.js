@@ -2,8 +2,8 @@
 import { REGION_SCHEMA } from "./config.js";
 
 export class Chunk {
-  static SIZE = REGION_SCHEMA.CHUNK_SIZE_SHELL;
-  static VOXELS = REGION_SCHEMA.CHUNK_SIZE_SHELL ** 3;
+  static SIZE = REGION_SCHEMA.CHUNK_SIZE;
+  static VOXELS = REGION_SCHEMA.CHUNK_SIZE ** 3;
 
   constructor({ voxels, origin = { x: 0, y: 0, z: 0 } } = {}) {
     const expected = Chunk.VOXELS;
