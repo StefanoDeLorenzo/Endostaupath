@@ -1,6 +1,6 @@
 // validate_region.js (versione per browser)
-import { Region } from "./region.js";
-import { REGION_SCHEMA } from "./config.js";
+import { Region } from "./src/world/region.js";
+import { REGION_SCHEMA } from "./src/world/config.js";
 
 /**
  * Verifica l'integrità e il contenuto di una regione.
