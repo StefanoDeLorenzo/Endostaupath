@@ -2,23 +2,6 @@
 import { Region } from "./src/world/region.js";
 import { REGION_SCHEMA } from "./src/world/config.js";
 
-const el = {
-    xFrom: document.getElementById('xFrom'),
-    xTo: document.getElementById('xTo'),
-    yFrom: document.getElementById('yFrom'),
-    yTo: document.getElementById('yTo'),
-    zFrom: document.getElementById('zFrom'),
-    zTo: document.getElementById('zTo'),
-    zipName: document.getElementById('zipName'),
-    btnGen: document.getElementById('btnGen'),
-    btnClear: document.getElementById('btnClear'),
-    btnStop: document.getElementById('btnStop'),
-    status: document.getElementById('status'),
-    // Aggiungi i nuovi elementi qui
-    fileInput: document.getElementById('fileInput'),
-    btnValidate: document.getElementById('btnValidate'),
-    validationStatus: document.getElementById('validationStatus'),
-};
 
 /**
  * Verifica l'integrità e il contenuto di una regione.

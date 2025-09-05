@@ -84,7 +84,7 @@
     <div class="row">
       <label for="fileInput">Seleziona un file:</label>
       <input type="file" id="fileInput" accept=".voxl" />
-      <button id="btnValidate" type="button" class="primary" disabled>Verifica</button>
+      <button id="btnValidate" type="button" class="primary">Verifica</button>
     </div>
 
     <div id="validationStatus" style="margin-top: 14px; font-size: 14px;"></div>
@@ -310,6 +310,8 @@
   // validate_region.js (versione per browser)
 import { Region } from "./src/world/region.js";
 import { REGION_SCHEMA } from "./src/world/config.js";
+
+
 
 /**
  * Verifica l'integrità e il contenuto di una regione.
