@@ -50,8 +50,8 @@ export class Region {
     this._checkXYZ(x,y,z);
     if (chunk!==null && !(chunk instanceof this.ChunkClass)) throw new Error("setChunk expects Chunk");
     // Validazione soft: se presente, deve avere la lunghezza giusta
-    if (chunk && chunk.shellByteLength && chunk.shellByteLength() !== this.CHUNK_BYTES) {
-      throw new Error(`Chunk blob size mismatch: got ${chunk.shellByteLength()}, expected ${this.CHUNK_BYTES}`);
+    if (chunk && chunk.coreByteLength && chunk.coreByteLength() !== this.CHUNK_BYTES) {
+      throw new Error(`Chunk blob size mismatch: got ${chunk.coreByteLength()}, expected ${this.CHUNK_BYTES}`);
     }
     this._chunks[this.linearIndex(x,y,z)] = chunk;
   }

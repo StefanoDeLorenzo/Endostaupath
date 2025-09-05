@@ -129,7 +129,8 @@ export class Chunk {
 
   // --- Bridge I/O legacy identico ---
   toShellData(){ return this.voxels; }
-  shellByteLength(){ return this.voxels.length; }
+  static coreByteLength() {return REGION_SCHEMA.CHUNK_SIZE ** 3; }
+  static shellByteLength(){ return REGION_SCHEMA.CHUNK_SIZE_SHELL ** 3; }
   static fromShellData(uint8, origin={x:0,y:0,z:0}){
     if (!(uint8 instanceof Uint8Array) || uint8.length !== Chunk.VOXELS) {
       throw new Error(`fromShellData expects Uint8Array(${Chunk.VOXELS})`);
