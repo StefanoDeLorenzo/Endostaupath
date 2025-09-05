@@ -74,6 +74,20 @@
 
     <div id="status" class="status" aria-live="polite"></div>
   </form>
+<hr style="margin: 32px 0;" />
+
+    <h1>Verifica file</h1>
+    <p>
+      Seleziona un file `.voxl` generato in precedenza per verificarne l'integrità e il contenuto.
+    </p>
+
+    <div class="row">
+      <label for="fileInput">Seleziona un file:</label>
+      <input type="file" id="fileInput" accept=".voxl" />
+      <button id="btnValidate" type="button" class="primary" disabled>Verifica</button>
+    </div>
+
+    <div id="validationStatus" style="margin-top: 14px; font-size: 14px;"></div>
 
   <script type="module">
     import { generateRegionBuffer } from './generator_structured.js';
@@ -291,6 +305,55 @@
     el.btnStop.addEventListener('click', () => { stopFlag = true; setStatus('Interruzione richiesta…'); });
     ['xFrom','xTo','yFrom','yTo','zFrom','zTo'].forEach(id => el[id].addEventListener('input', updateEstimate));
     updateEstimate();
+  </script>
+  <script type="module">
+  // validate_region.js (versione per browser)
+import { Region } from "./region.js";
+import { REGION_SCHEMA } from "./config.js";
+
+/**
+ * Verifica l'integrità e il contenuto di una regione.
+ * @param {ArrayBuffer} buffer Il buffer del file .voxl
+ * @param {string} fileName Il nome del file per i log
+ * @returns {object} Oggetto risultato della verifica.
+ */
+export function verifyGeneratedRegion(buffer, fileName) {
+  try {
+    const region = Region.fromBuffer(new Uint8Array(buffer), { schema: REGION_SCHEMA });
+    
+    let totalVoxels = 0;
+    const histograms = [];
+
+    region.forEachChunk((chunk) => {
+      if (chunk) {
+        const histogram = chunk.histogram();
+        histograms.push(histogram);
+        const chunkVoxels = histogram.reduce((sum, count) => sum + count, 0);
+        totalVoxels += chunkVoxels;
+      }
+    });
+
+    const nonAirVoxelCount = histograms.reduce((sum, hist) => sum + hist[1] + hist[3] + hist[4], 0);
+    
+    if (totalVoxels > 0 && nonAirVoxelCount > 0) {
+      return {
+        success: true,
+        message: `✅ La regione contiene dati validi e non è vuota! Voxel totali: ${totalVoxels}`
+      };
+    } else {
+      return {
+        success: false,
+        message: `❌ Attenzione: La regione non contiene dati voxel validi. Voxel totali: ${totalVoxels}`
+      };
+    }
+
+  } catch (error) {
+    return {
+      success: false,
+      message: `Si è verificato un errore durante la verifica del file "${fileName}": ${error.message}`
+    };
+  }
+}
   </script>
 </body>
 </html>
