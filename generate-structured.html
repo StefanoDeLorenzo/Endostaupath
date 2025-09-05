@@ -74,20 +74,7 @@
 
     <div id="status" class="status" aria-live="polite"></div>
   </form>
-<hr style="margin: 32px 0;" />
 
-    <h1>Verifica file</h1>
-    <p>
-      Seleziona un file `.voxl` generato in precedenza per verificarne l'integrità e il contenuto.
-    </p>
-
-    <div class="row">
-      <label for="fileInput">Seleziona un file:</label>
-      <input type="file" id="fileInput" accept=".voxl" />
-      <button id="btnValidate" type="button" class="primary">Verifica</button>
-    </div>
-
-    <div id="validationStatus" style="margin-top: 14px; font-size: 14px;"></div>
 
   <script type="module">
     import { generateRegionBuffer } from './generator_structured.js';

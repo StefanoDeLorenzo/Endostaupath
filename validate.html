@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Verifica file .voxl</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 24px; }
+    h1 { margin-top: 0; }
+    .container { max-width: 640px; }
+    .row { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+    input[type=file] { padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    button { padding: 10px 14px; border-radius: 8px; border: 0; cursor: pointer; background: #1f6feb; color: #fff; }
+    #validationStatus {
+      white-space: pre-wrap;
+      font-family: monospace;
+      background-color: #f4f4f4;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 6px;
+      min-height: 100px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Verifica file .voxl</h1>
+    <p>
+      Seleziona un file `.voxl` per verificarne l'integrità e il contenuto.
+    </p>
+
+    <div class="row">
+      <input type="file" id="fileInput" accept=".voxl" />
+      <button id="btnValidate" type="button">Verifica</button>
+    </div>
+
+    <pre id="validationStatus">In attesa di un file...</pre>
+  </div>
+
+  <script type="module">
+    import { Region } from './src/world/region.js';
+    import { REGION_SCHEMA } from './src/world/config.js';
+
+    // Rimuovi gli import non necessari se li hai
+    // import { Chunk } from './src/world/chunk.js';
+
+    // Funzione di verifica adattata
+    function verifyRegion(buffer, fileName) {
+      try {
+        const bytes = new Uint8Array(buffer);
+        const region = Region.fromBuffer(bytes, { schema: REGION_SCHEMA });
+        
+        let totalVoxels = 0;
+        const histograms = [];
+
+        region.forEachChunk((chunk) => {
+          if (chunk) {
+            const histogram = chunk.histogram();
+            histograms.push(histogram);
+            const chunkVoxels = histogram.reduce((sum, count) => sum + count, 0);
+            totalVoxels += chunkVoxels;
+          }
+        });
+
+        const nonAirVoxelCount = histograms.reduce((sum, hist) => sum + hist[1] + hist[3] + hist[4], 0);
+
+        if (totalVoxels > 0 && nonAirVoxelCount > 0) {
+          return {
+            success: true,
+            message: `✅ File "${fileName}" valido!\n\n- Voxel totali: ${totalVoxels}\n- Voxel non-aria: ${nonAirVoxelCount}\n\nAnalisi completata.`
+          };
+        } else {
+          return {
+            success: false,
+            message: `❌ File "${fileName}" non valido o vuoto.\n- Voxel totali: ${totalVoxels}\n\nLa regione è vuota o danneggiata.`
+          };
+        }
+      } catch (error) {
+        return {
+          success: false,
+          message: `❌ Errore durante la verifica del file "${fileName}":\n\n${error.message}\n\nAssicurati che il file sia nel formato .voxl corretto.`
+        };
+      }
+    }
+
+    // Gestione degli eventi
+    const fileInput = document.getElementById('fileInput');
+    const btnValidate = document.getElementById('btnValidate');
+    const statusBox = document.getElementById('validationStatus');
+
+    btnValidate.addEventListener('click', () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        statusBox.innerText = "Per favore, seleziona un file.";
+        return;
+      }
+
+      statusBox.innerText = `Caricamento di "${file.name}"...`;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const buffer = event.target.result;
+        const result = verifyRegion(buffer, file.name);
+        statusBox.innerText = result.message;
+        statusBox.style.color = result.success ? 'green' : 'red';
+      };
+      reader.onerror = () => {
+        statusBox.innerText = `Impossibile leggere il file "${file.name}".`;
+        statusBox.style.color = 'red';
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  </script>
+</body>
+</html>
