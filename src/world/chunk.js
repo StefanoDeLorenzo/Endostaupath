@@ -137,6 +137,36 @@ export class Chunk {
     return new Chunk({ voxels:uint8, origin });
   }
 
+  toCoreData(){
+    const S = REGION_SCHEMA.CHUNK_SIZE; // 30
+    const S_S = Chunk.SIZE; // 32
+    const coreVoxels = new Uint8Array(S * S * S);
+    let k = 0;
+    for (let z = 1; z < S_S - 1; z++) {
+      for (let y = 1; y < S_S - 1; y++) {
+        for (let x = 1; x < S_S - 1; x++) {
+          coreVoxels[k++] = this.get(x, y, z);
+        }
+      }
+    }
+    return coreVoxels;
+  }
+
+  static fromCoreData(uint8, origin = { x: 0, y: 0, z: 0 }) {
+  const S_S = Chunk.SIZE; // 32
+  const S = REGION_SCHEMA.CHUNK_SIZE; // 30
+  const chunkWithShell = new Chunk({ origin });
+  let k = 0;
+  for (let cz = 0; cz < S; cz++) {
+    for (let cy = 0; cy < S; cy++) {
+      for (let cx = 0; cx < S; cx++) {
+        chunkWithShell.set(cx + 1, cy + 1, cz + 1, uint8[k++]);
+      }
+    }
+  }
+  return chunkWithShell;
+  }
+
   // --- Utility ---
   clone() { return new Chunk({ voxels: this.voxels.slice(), origin: this.origin }); }
   static createEmpty(origin={x:0,y:0,z:0}) { return new Chunk({ origin }); }

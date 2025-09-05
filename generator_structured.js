@@ -58,8 +58,8 @@ function perlinNoise3D(x, y, z) {
  * Nel 32^3 inseriamo il guscio mappando (x,y,z) locali 0..31 → logici -1..30.
  */
 const SHELL_SIZE   = Chunk.SIZE;          // es. 32 (legacy attuale)
-const LOGICAL_SIZE = Chunk.SIZE - 2;      // shell 1-voxel per lato → 30 quando SIZE=32
-const SHELL_MARGIN = (SHELL_SIZE - LOGICAL_SIZE) >> 1; // =1 con SIZE=32
+const LOGICAL_SIZE = Chunk.SIZE; // - 2;      // shell 1-voxel per lato → 30 quando SIZE=32
+const SHELL_MARGIN = (SHELL_SIZE - LOGICAL_SIZE) >> 1; // =1 con SIZE=32 ; = 0 quando SIZE=30
 const REGION_SPAN  = REGION_SCHEMA.GRID * LOGICAL_SIZE; // es. 4*30 = 120
 
 function generateChunkData({ chunk, regionX, regionY, regionZ, chunkX, chunkY, chunkZ }) {

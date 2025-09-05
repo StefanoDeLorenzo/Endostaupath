@@ -18,7 +18,8 @@ export class Region {
     // Precalcolo costanti dal solo schema (niente chiamate per-chunk)
     this.GRID = schema.GRID;
     this.CHUNK_SIZE_SHELL = schema.CHUNK_SIZE_SHELL;
-    this.CHUNK_BYTES = schema.CHUNK_SHELL_BYTES;
+    //this.CHUNK_BYTES = schema.CHUNK_SHELL_BYTES; // Vecchia shell
+    this.CHUNK_BYTES = schema.CHUNK_SIZE ** 3; // Nuova senza shell
 
     this.TOTAL = this.GRID * this.GRID * this.GRID;
     this.HEADER_SIZE = 11;
@@ -67,9 +68,11 @@ export class Region {
     // Header
     view.setUint32(0, Region.MAGIC, false);
     view.setUint8(4, Region.VERSION);
-    view.setUint8(5, this.CHUNK_SIZE_SHELL);
-    view.setUint8(6, this.CHUNK_SIZE_SHELL);
-    view.setUint8(7, this.CHUNK_SIZE_SHELL);
+    // Vogliamo salvare la dimensione del CORE del chunk, non la shell.
+    // L'header deve corrispondere ai dati salvati.
+    view.setUint8(5, this.schema.CHUNK_SIZE); // 30
+    view.setUint8(6, this.schema.CHUNK_SIZE); // 30
+    view.setUint8(7, this.schema.CHUNK_SIZE); // 30
     view.setUint8(8, (this.TOTAL >> 16) & 0xFF);
     view.setUint8(9, (this.TOTAL >> 8) & 0xFF);
     view.setUint8(10, this.TOTAL & 0xFF);
@@ -92,11 +95,12 @@ export class Region {
     let dataOffset = this.DATA_OFFSET;
     for (let i=0;i<this.TOTAL;i++){
       const chunk = this._chunks[i];
-      const shell = chunk ? chunk.toShellData() : new Uint8Array(this.CHUNK_BYTES);
-      if (!(shell instanceof Uint8Array) || shell.length !== this.CHUNK_BYTES) {
+      // Adesso salvi il solo core, come hai giustamente modificato
+      const coreData = chunk ? chunk.toCoreData() : new Uint8Array(this.CHUNK_BYTES);
+      if (!(coreData instanceof Uint8Array) || coreData.length !== this.CHUNK_BYTES) {
         throw new Error(`Chunk #${i} invalid payload length`);
       }
-      new Uint8Array(finalBuffer, dataOffset, this.CHUNK_BYTES).set(shell);
+      new Uint8Array(finalBuffer, dataOffset, this.CHUNK_BYTES).set(coreData);
       dataOffset += this.CHUNK_BYTES;
     }
 
@@ -117,8 +121,8 @@ export class Region {
     if (version !== Region.VERSION) throw new Error(`Unsupported version ${version}`);
 
     const sx = view.getUint8(5), sy = view.getUint8(6), sz = view.getUint8(7);
-    if (sx !== schema.CHUNK_SIZE_SHELL || sy !== schema.CHUNK_SIZE_SHELL || sz !== schema.CHUNK_SIZE_SHELL) {
-      throw new Error(`Chunk size mismatch: file ${sx},${sy},${sz} vs schema ${schema.CHUNK_SIZE_SHELL}`);
+    if (sx !== schema.CHUNK_SIZE || sy !== schema.CHUNK_SIZE || sz !== schema.CHUNK_SIZE) {
+      throw new Error(`Chunk size mismatch: file ${sx},${sy},${sz} vs schema ${schema.CHUNK_SIZE}`);
     }
     const total = (view.getUint8(8) << 16) | (view.getUint8(9) << 8) | view.getUint8(10);
     const GRID = schema.GRID;
@@ -131,11 +135,11 @@ export class Region {
       const base = HEADER_SIZE + i*INDEX_ENTRY_SIZE;
       const off = (bytes[base+0] << 16) | (bytes[base+1] << 8) | bytes[base+2];
       const siz = (bytes[base+3] << 8) | bytes[base+4];
-      if (siz !== schema.CHUNK_SHELL_BYTES) throw new Error(`Chunk #${i} size ${siz} != ${schema.CHUNK_SHELL_BYTES}`);
+      if (siz !== schema.CHUNK_SIZE ** 3) throw new Error(`Chunk #${i} size ${siz} != ${schema.CHUNK_SIZE ** 3}`);
 
-      const slice = bytes.subarray(off, off + siz);
-      const {x,y,z} = region.unlinearIndex(i);
-      region._chunks[i] = ChunkClass.fromShellData(slice, {x,y,z});
+        const coreSlice = bytes.subarray(off, off + siz);
+        const {x, y, z} = region.unlinearIndex(i);
+        region._chunks[i] = ChunkClass.fromCoreData(coreSlice, {x, y, z});
     }
 
     return region;
