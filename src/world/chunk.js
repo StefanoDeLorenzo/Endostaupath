@@ -5,7 +5,7 @@ export class Chunk {
   static SIZE = REGION_SCHEMA.CHUNK_SIZE_SHELL;
   static VOXELS = REGION_SCHEMA.CHUNK_SIZE_SHELL ** 3;
 
-  constructor({ voxels, origin = { x: 0, y: 0, z: 0 } } = {}) {
+  constructor({ voxels, origin = { x: 0, y: 0, z: 0 }, regionCoords = { x: 0, y: 0, z: 0 } } = {}) {
     const expected = Chunk.VOXELS;
 
     if (voxels instanceof Uint8Array) {
@@ -22,6 +22,7 @@ export class Chunk {
     }
 
     this.origin = { x: origin.x | 0, y: origin.y | 0, z: origin.z | 0 };
+    this.regionCoords = { x: regionCoords.x | 0, y: regionCoords.y | 0, z: regionCoords.z | 0 };
   }
 
   // --- Coordinate e bounds ---

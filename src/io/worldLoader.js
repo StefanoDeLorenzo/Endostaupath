@@ -43,7 +43,8 @@ export class WorldLoader {
 
     if (chunkFileOffset === 0) return null;
 
-    const size = REGION_SCHEMA.CHUNK_SHELL_BYTES; // 32^3
+    //const size = REGION_SCHEMA.CHUNK_SHELL_BYTES; // 32^3
+    const size = REGION_SCHEMA.CHUNK_BYTES; // 30^3
     const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + size);
     return new Uint8Array(chunkBuffer);
   }
