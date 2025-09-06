@@ -25,9 +25,9 @@ export class Game {
 
     // Imposta la posizione iniziale della regione dopo il caricamento
     const p = this.player.position;
-    this.lastRegion.x = Math.floor(p.x / REGION_SCHEMA.REGION_SPAN);
-    this.lastRegion.y = Math.floor(p.y / REGION_SCHEMA.REGION_SPAN);
-    this.lastRegion.z = Math.floor(p.z / REGION_SCHEMA.REGION_SPAN);
+    const currentRegionX = Math.floor(p.x / REGION_SCHEMA.REGION_SPAN);
+    const currentRegionY = Math.floor(p.y / REGION_SCHEMA.REGION_SPAN);
+    const currentRegionZ = Math.floor(p.z / REGION_SCHEMA.REGION_SPAN);
 
     this.lastRegion = {
       x: currentRegionX, 
