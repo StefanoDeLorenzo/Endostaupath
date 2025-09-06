@@ -305,7 +305,6 @@ export class ChunkManager {
   async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
     console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
 
-    // Non facciamo nulla se la regione di origine non è cambiata
     const newWindowOrigin = {
       x: newRegionX - 1,
       y: newRegionY - 1,
@@ -321,13 +320,9 @@ export class ChunkManager {
 
     this.windowOrigin = newWindowOrigin;
 
-    const REGION_GRID = REGION_SCHEMA.GRID;
-    const CHUNK_SIZE = REGION_SCHEMA.CHUNK_SIZE;
-    const CHUNK_BYTES = REGION_SCHEMA.CHUNK_BYTES;
-    const WINDOW_REGION_COUNT = 3; // 3x3x3
+    const WINDOW_REGION_COUNT = 3;
     const WINDOW_VOXEL_SPAN = WINDOW_REGION_COUNT * REGION_SCHEMA.REGION_SPAN;
 
-    // Se è la prima volta, crea il grande array di dati
     if (!this.voxelWindow) {
       const totalBytes = WINDOW_VOXEL_SPAN ** 3;
       this.voxelWindow = new Uint8Array(totalBytes);
@@ -335,7 +330,6 @@ export class ChunkManager {
     }
 
     const regionsToLoad = [];
-    // Ordine di caricamento delle regioni: x, y, z
     for (let rx = -1; rx <= 1; rx++) {
       for (let ry = -1; ry <= 1; ry++) {
         for (let rz = -1; rz <= 1; rz++) {
@@ -367,20 +361,20 @@ export class ChunkManager {
 
                             if (!chunkData) continue;
 
-                            const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * CHUNK_SIZE;
-                            const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * CHUNK_SIZE;
-                            const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * CHUNK_SIZE;
+                            const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
+                            const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
+                            const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
 
-                            // Copia i dati del chunk 30x30x30 nel voxelWindow
-                            // a partire da un offset specifico
+                            // Ora correggiamo l'ordine dei cicli per la copia
                             let k = 0;
-                            for (let x = 0; x < CHUNK_SIZE; x++) {
-                                for (let y = 0; y < CHUNK_SIZE; y++) {
-                                    for (let z = 0; z < CHUNK_SIZE; z++) {
+                            for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
+                                for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
+                                    for (let x = 0; x < REGION_SCHEMA.CHUNK_SIZE; x++) {
                                         const destX = startX + x;
                                         const destY = startY + y;
                                         const destZ = startZ + z;
                                         
+                                        // La formula per l'offset di destinazione è corretta
                                         const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
                                         
                                         this.voxelWindow[destOffset] = chunkData[k++];
