@@ -34,7 +34,7 @@ export class WorldLoader {
     const headerSize = 11;
 
     // Ordine di indicizzazione come nel writer: z + GRID*(y + GRID*x)
-    const idx = chunkZ + REGION_SCHEMA.GRID * (chunkY + REGION_SCHEMA.GRID * chunkX);
+    const idx = chunkX + REGION_SCHEMA.GRID * (chunkY + REGION_SCHEMA.GRID * chunkZ);
     const off = headerSize + idx * 5;
 
     // offset a 24 bit (big-endian)
