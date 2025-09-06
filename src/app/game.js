@@ -14,8 +14,10 @@ export class Game {
     this.sceneInitializer.initializeScene();
     this.player = this.scene.activeCamera;
 
-    this.worldLoader = new WorldLoader();
     this.chunkManager = new ChunkManager(this.scene, this.sceneInitializer.shadowGenerator, this.worldLoader);
+    this.worldLoader = new WorldLoader(this.chunkManager);
+
+    this.chunkManager.worldLoader = this.worldLoader;
 
     this.lastChunk = { x: null, y: null, z: null };
     this.lastRegion = { x: null, y: null, z: null };

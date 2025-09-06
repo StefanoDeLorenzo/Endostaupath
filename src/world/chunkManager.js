@@ -2,10 +2,10 @@
 import { REGION_SCHEMA } from './config.js';
 
 export class ChunkManager {
-  constructor(scene, shadowGenerator, worldLoader) {
+  constructor(scene, shadowGenerator) {
     this.scene = scene;
     this.shadowGenerator = shadowGenerator;
-    this.worldLoader = worldLoader;
+    this.worldLoader = null;
 
     // MODIFICA: Thread pool per la generazione della mesh
     this.workerPool = [];
@@ -302,7 +302,7 @@ export class ChunkManager {
     }
 
   // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
-  async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
+  updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
     console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
 
     const newWindowOrigin = {
@@ -320,92 +320,16 @@ export class ChunkManager {
 
     this.windowOrigin = newWindowOrigin;
 
-    const WINDOW_REGION_COUNT = 3;
-    const WINDOW_VOXEL_SPAN = WINDOW_REGION_COUNT * REGION_SCHEMA.REGION_SPAN;
-
-    if (!this.voxelWindow) {
-      const totalBytes = WINDOW_VOXEL_SPAN ** 3;
-      this.voxelWindow = new Uint8Array(totalBytes);
-      console.log(`VoxelWindow inizializzata: ${totalBytes} byte.`);
-    }
-
-    const regionsToLoad = [];
-    for (let rx = -1; rx <= 1; rx++) {
-      for (let ry = -1; ry <= 1; ry++) {
-        for (let rz = -1; rz <= 1; rz++) {
-          regionsToLoad.push(
-            this.worldLoader.fetchAndStoreRegionData(
-              newRegionX + rx, newRegionY + ry, newRegionZ + rz
-            )
-          );
-        }
-      }
-    }
-    await Promise.all(regionsToLoad);
-
-    // Loop per le regioni
+    // Avvia il caricamento delle regioni ma non aspettare!
     for (let rx = -1; rx <= 1; rx++) {
         for (let ry = -1; ry <= 1; ry++) {
             for (let rz = -1; rz <= 1; rz++) {
-                const regionKey = `${newRegionX + rx}_${newRegionY + ry}_${newRegionZ + rz}`;
-                const regionBuffer = this.worldLoader.regionsData.get(regionKey);
-                
-                // CORREZIONE: Ora gestiamo sia le regioni che esistono che quelle vuote
-                if (regionBuffer && regionBuffer.byteLength > 0) {
-                  // Loop per i chunk all'interno della regione
-                  for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
-                      for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
-                          for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
-                              const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
-                                  regionBuffer, cx, cy, cz
-                              );
-
-                              if (!chunkData) continue;
-
-                              const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
-                              const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
-                              const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
-
-                              let k = 0;
-                              for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
-                                  for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
-                                      for (let x = 0; x < REGION_SCHEMA.CHUNK_SIZE; x++) {
-                                          const destX = startX + x;
-                                          const destY = startY + y;
-                                          const destZ = startZ + z;
-                                          
-                                          const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                                          
-                                          this.voxelWindow[destOffset] = chunkData[k++];
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                  }
-                } else {
-                  // Se la regione non esiste o è vuota, azzera l'area corrispondente nel voxelWindow
-                  const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN;
-                  const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN;
-                  const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN;
-                  
-                  for (let z = 0; z < REGION_SCHEMA.REGION_SPAN; z++) {
-                      for (let y = 0; y < REGION_SCHEMA.REGION_SPAN; y++) {
-                          for (let x = 0; x < REGION_SCHEMA.REGION_SPAN; x++) {
-                              const destX = startX + x;
-                              const destY = startY + y;
-                              const destZ = startZ + z;
-                              const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                              this.voxelWindow[destOffset] = 0; // Imposta a zero (aria)
-                          }
-                      }
-                  }
-                }
+                this.worldLoader.fetchAndStoreRegionData(
+                    newRegionX + rx, newRegionY + ry, newRegionZ + rz
+                );
             }
         }
     }
-
-    console.log("VoxelWindow aggiornata con successo.");
   }
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---
@@ -445,6 +369,76 @@ export class ChunkManager {
     return shellData;
   }
 
+    // Nuovo metodo chiamato da worldLoader
+  onRegionDataReady(regionKey) {
+    const regionBuffer = this.worldLoader.regionsData.get(regionKey);
+    const [regionX, regionY, regionZ] = regionKey.split('_').map(Number);
+    const windowOrigin = this.windowOrigin;
+    
+    // Calcola le coordinate relative all'interno della finestra
+    const rx = regionX - windowOrigin.x;
+    const ry = regionY - windowOrigin.y;
+    const rz = regionZ - windowOrigin.z;
+
+    // Se la regione non è più nella finestra (il giocatore si è spostato)
+    if (rx < 0 || rx > 2 || ry < 0 || ry > 2 || rz < 0 || rz > 2) {
+      return;
+    }
+    
+    const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
+    
+    if (regionBuffer && regionBuffer.byteLength > 0) {
+      // Logica per copiare i chunk dalla regione al voxelWindow
+      for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
+          for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
+              for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
+                  const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
+                      regionBuffer, cx, cy, cz
+                  );
+
+                  if (!chunkData) continue;
+
+                  const startX = rx * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
+                  const startY = ry * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
+                  const startZ = rz * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
+
+                  let k = 0;
+                  // CORREZIONE: Ordine dei loop per allinearsi al generatore (x, y, z)
+                  for (let x = 0; x < REGION_SCHEMA.CHUNK_SIZE; x++) {
+                      for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
+                          for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
+                              const destX = startX + x;
+                              const destY = startY + y;
+                              const destZ = startZ + z;
+                              
+                              const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                              
+                              this.voxelWindow[destOffset] = chunkData[k++];
+                          }
+                      }
+                  }
+              }
+          }
+      }
+    } else {
+      // Se la regione è vuota, azzera l'area corrispondente nel voxelWindow
+      const startX = rx * REGION_SCHEMA.REGION_SPAN;
+      const startY = ry * REGION_SCHEMA.REGION_SPAN;
+      const startZ = rz * REGION_SCHEMA.REGION_SPAN;
+      
+      for (let x = 0; x < REGION_SCHEMA.REGION_SPAN; x++) {
+          for (let y = 0; y < REGION_SCHEMA.REGION_SPAN; y++) {
+              for (let z = 0; z < REGION_SCHEMA.REGION_SPAN; z++) {
+                  const destX = startX + x;
+                  const destY = startY + y;
+                  const destZ = startZ + z;
+                  const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                  this.voxelWindow[destOffset] = 0; // Imposta a zero (aria)
+              }
+          }
+      }
+    }
+  }
 
   printDebugInfo(playerPosition, chunksToLoad, loadedRegions) {
     const currentRegionX = Math.floor(playerPosition.x / REGION_SCHEMA.REGION_SPAN);
