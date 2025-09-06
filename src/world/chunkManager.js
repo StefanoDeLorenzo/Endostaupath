@@ -335,9 +335,10 @@ export class ChunkManager {
     }
 
     const regionsToLoad = [];
-    for (let rx = -1; rx <= 1; rx++) {
+    // Ordine di caricamento delle regioni: z, y, x
+    for (let rz = -1; rz <= 1; rz++) {
       for (let ry = -1; ry <= 1; ry++) {
-        for (let rz = -1; rz <= 1; rz++) {
+        for (let rx = -1; rx <= 1; rx++) {
           regionsToLoad.push(
             this.worldLoader.fetchAndStoreRegionData(
               newRegionX + rx,
@@ -350,38 +351,36 @@ export class ChunkManager {
     }
     await Promise.all(regionsToLoad);
 
-    // Iterazione per copiare i dati nel voxelWindow
-    for (let rx = -1; rx <= 1; rx++) {
+    // Ordine di copia dei chunk: z, y, x
+    for (let rz = -1; rz <= 1; rz++) {
       for (let ry = -1; ry <= 1; ry++) {
-        for (let rz = -1; rz <= 1; rz++) {
+        for (let rx = -1; rx <= 1; rx++) {
           const currentRegionX = newRegionX + rx;
           const currentRegionY = newRegionY + ry;
           const currentRegionZ = newRegionZ + rz;
           const regionKey = `${currentRegionX}_${currentRegionY}_${currentRegionZ}`;
           const regionBuffer = this.worldLoader.regionsData.get(regionKey);
 
-          if (!regionBuffer) continue; // Salta le regioni non caricate/vuote
+          if (!regionBuffer) continue;
 
-          // Itera su ogni chunk all'interno della regione
-          for (let cx = 0; cx < REGION_GRID; cx++) {
-            for (let cy = 0; cy < REGION_GRID; cy++) {
-              for (let cz = 0; cz < REGION_GRID; cz++) {
-                // Estrae i dati core del chunk dal buffer della regione
+          // Ordine di iterazione sui chunk: z, y, x
+          for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
+            for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
+              for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
                 const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
                   regionBuffer, cx, cy, cz
                 );
                 
-                if (!chunkData) continue; // Salta i chunk vuoti
+                if (!chunkData) continue;
 
-                // Calcola l'offset di destinazione nel voxelWindow
                 const destX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * CHUNK_SIZE;
                 const destY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * CHUNK_SIZE;
                 const destZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * CHUNK_SIZE;
+                const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
                 const destOffset = destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN +
                                    destY * WINDOW_VOXEL_SPAN +
                                    destX;
                 
-                // Copia i dati del chunk nel voxelWindow
                 this.voxelWindow.set(chunkData, destOffset);
               }
             }
