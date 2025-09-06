@@ -49,6 +49,23 @@ export class WorldLoader {
     return new Uint8Array(chunkBuffer);
   }
 
+  getCoreChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
+    const dv = new DataView(buffer);
+    const headerSize = 11;
+
+    const idx = chunkZ + REGION_SCHEMA.GRID * (chunkY + REGION_SCHEMA.GRID * chunkX);
+    const off = headerSize + idx * 5;
+
+    // offset a 24 bit
+    const chunkFileOffset =
+      (dv.getUint8(off) << 16) | (dv.getUint8(off + 1) << 8) | dv.getUint8(off + 2);
+
+    if (chunkFileOffset === 0) return null;
+
+    const size = REGION_SCHEMA.CHUNK_BYTES;
+    return new Uint8Array(buffer.slice(chunkFileOffset, chunkFileOffset + size));
+  }
+
   getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
     const regionKey = `${regionX}_${regionY}_${regionZ}`;
     if (!this.regionsData.has(regionKey)) return null;
