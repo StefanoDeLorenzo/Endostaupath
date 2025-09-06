@@ -349,7 +349,9 @@ export class ChunkManager {
             for (let rz = -1; rz <= 1; rz++) {
                 const regionKey = `${newRegionX + rx}_${newRegionY + ry}_${newRegionZ + rz}`;
                 const regionBuffer = this.worldLoader.regionsData.get(regionKey);
-                if (!regionBuffer) continue;
+                
+                // CORREZIONE: Controlla se il buffer della regione è vuoto (byteLength = 0)
+                if (!regionBuffer || regionBuffer.byteLength === 0) continue;
 
                 // Loop per i chunk all'interno della regione
                 for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
@@ -365,7 +367,6 @@ export class ChunkManager {
                             const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
                             const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
 
-                            // Ora i cicli interni sono in ordine Z-maggiore per corrispondere a `destOffset`
                             let k = 0;
                             for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
                                 for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
