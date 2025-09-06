@@ -304,7 +304,7 @@ export class ChunkManager {
   // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
   async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
     console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
-    
+
     // Non facciamo nulla se la regione di origine non è cambiata
     const newWindowOrigin = {
       x: newRegionX - 1,
@@ -349,40 +349,49 @@ export class ChunkManager {
     }
     await Promise.all(regionsToLoad);
 
-    // NUOVO ORDINE: x, y, z
-    // Loop per copiare i dati dei chunk nel voxelWindow
-  for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
-      for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
-          for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
-              const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
-                  regionBuffer, cx, cy, cz
-              );
+    // Loop per le regioni
+    for (let rx = -1; rx <= 1; rx++) {
+        for (let ry = -1; ry <= 1; ry++) {
+            for (let rz = -1; rz <= 1; rz++) {
+                const regionKey = `${newRegionX + rx}_${newRegionY + ry}_${newRegionZ + rz}`;
+                const regionBuffer = this.worldLoader.regionsData.get(regionKey);
+                if (!regionBuffer) continue;
 
-              if (!chunkData) continue;
+                // Loop per i chunk all'interno della regione
+                for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
+                    for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
+                        for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
+                            const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
+                                regionBuffer, cx, cy, cz
+                            );
 
-              const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * CHUNK_SIZE;
-              const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * CHUNK_SIZE;
-              const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * CHUNK_SIZE;
+                            if (!chunkData) continue;
 
-              // Copia i dati del chunk 30x30x30 nel voxelWindow 
-              // a partire da un offset specifico
-              const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
-              let k = 0;
-              for (let z = 0; z < CHUNK_SIZE; z++) {
-                  for (let y = 0; y < CHUNK_SIZE; y++) {
-                      for (let x = 0; x < CHUNK_SIZE; x++) {
-                          const destX = startX + x;
-                          const destY = startY + y;
-                          const destZ = startZ + z;
-                          
-                          const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                          
-                          this.voxelWindow[destOffset] = chunkData[k++];
-                      }
-                  }
-              }
-          }
-      }
+                            const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * CHUNK_SIZE;
+                            const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * CHUNK_SIZE;
+                            const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * CHUNK_SIZE;
+
+                            // Copia i dati del chunk 30x30x30 nel voxelWindow
+                            // a partire da un offset specifico
+                            let k = 0;
+                            for (let x = 0; x < CHUNK_SIZE; x++) {
+                                for (let y = 0; y < CHUNK_SIZE; y++) {
+                                    for (let z = 0; z < CHUNK_SIZE; z++) {
+                                        const destX = startX + x;
+                                        const destY = startY + y;
+                                        const destZ = startZ + z;
+                                        
+                                        const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                                        
+                                        this.voxelWindow[destOffset] = chunkData[k++];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     console.log("VoxelWindow aggiornata con successo.");
