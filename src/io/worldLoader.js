@@ -28,6 +28,8 @@ export class WorldLoader {
       this.loadedRegions.add(regionKey);
     } catch (err) {
       console.error(`Errore durante il caricamento della regione (${regionX}, ${regionY}, ${regionZ}):`, err);
+      // CORREZIONE: Aggiungi la regione a loadedRegions anche in caso di errore di rete
+      this.loadedRegions.add(regionKey);
     }
   }
 
