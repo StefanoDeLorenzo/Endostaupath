@@ -335,15 +335,13 @@ export class ChunkManager {
     }
 
     const regionsToLoad = [];
-    // Ordine di caricamento delle regioni: z, y, x
-    for (let rz = -1; rz <= 1; rz++) {
+    // Ordine di caricamento delle regioni: x, y, z
+    for (let rx = -1; rx <= 1; rx++) {
       for (let ry = -1; ry <= 1; ry++) {
-        for (let rx = -1; rx <= 1; rx++) {
+        for (let rz = -1; rz <= 1; rz++) {
           regionsToLoad.push(
             this.worldLoader.fetchAndStoreRegionData(
-              newRegionX + rx,
-              newRegionY + ry,
-              newRegionZ + rz
+              newRegionX + rx, newRegionY + ry, newRegionZ + rz
             )
           );
         }
@@ -351,10 +349,10 @@ export class ChunkManager {
     }
     await Promise.all(regionsToLoad);
 
-    // Ordine di copia dei chunk: z, y, x
-    for (let rz = -1; rz <= 1; rz++) {
+    // NUOVO ORDINE: x, y, z
+    for (let rx = -1; rx <= 1; rx++) {
       for (let ry = -1; ry <= 1; ry++) {
-        for (let rx = -1; rx <= 1; rx++) {
+        for (let rz = -1; rz <= 1; rz++) {
           const currentRegionX = newRegionX + rx;
           const currentRegionY = newRegionY + ry;
           const currentRegionZ = newRegionZ + rz;
@@ -363,10 +361,10 @@ export class ChunkManager {
 
           if (!regionBuffer) continue;
 
-          // Ordine di iterazione sui chunk: z, y, x
-          for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
+          // NUOVO ORDINE: x, y, z
+          for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
             for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
-              for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
+              for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
                 const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
                   regionBuffer, cx, cy, cz
                 );
@@ -377,9 +375,9 @@ export class ChunkManager {
                 const destY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * CHUNK_SIZE;
                 const destZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * CHUNK_SIZE;
                 const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
-                const destOffset = destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN +
-                                   destY * WINDOW_VOXEL_SPAN +
-                                   destX;
+                
+                // CORREZIONE: Ordine dell'offset per X-maggiore
+                const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
                 
                 this.voxelWindow.set(chunkData, destOffset);
               }
@@ -401,15 +399,14 @@ export class ChunkManager {
 
     const shellData = new Uint8Array(CHUNK_SIZE_SHELL ** 3);
 
-    // L'origine del chunk dentro il voxelWindow
     const originX = (regionX - this.windowOrigin.x) * REGION_SCHEMA.REGION_SPAN + chunkX * CHUNK_SIZE;
     const originY = (regionY - this.windowOrigin.y) * REGION_SCHEMA.REGION_SPAN + chunkY * CHUNK_SIZE;
     const originZ = (regionZ - this.windowOrigin.z) * REGION_SCHEMA.REGION_SPAN + chunkZ * CHUNK_SIZE;
     
-    // Copia i dati per riempire la shell
-    for (let z = 0; z < CHUNK_SIZE_SHELL; z++) {
+    // NUOVO ORDINE: x, y, z
+    for (let x = 0; x < CHUNK_SIZE_SHELL; x++) {
       for (let y = 0; y < CHUNK_SIZE_SHELL; y++) {
-        for (let x = 0; x < CHUNK_SIZE_SHELL; x++) {
+        for (let z = 0; z < CHUNK_SIZE_SHELL; z++) {
           const globalX = originX + x - 1;
           const globalY = originY + y - 1;
           const globalZ = originZ + z - 1;
@@ -419,12 +416,9 @@ export class ChunkManager {
             globalY >= 0 && globalY < WINDOW_VOXEL_SPAN &&
             globalZ >= 0 && globalZ < WINDOW_VOXEL_SPAN
           ) {
-            const windowIndex = globalZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN +
-                                globalY * WINDOW_VOXEL_SPAN +
-                                globalX;
-            const shellIndex = z * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL +
-                               y * CHUNK_SIZE_SHELL +
-                               x;
+            // CORREZIONE: Ordine dell'offset per X-maggiore
+            const windowIndex = globalX + globalY * WINDOW_VOXEL_SPAN + globalZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+            const shellIndex = x + y * CHUNK_SIZE_SHELL + z * CHUNK_SIZE_SHELL * CHUNK_SIZE_SHELL;
             shellData[shellIndex] = this.voxelWindow[windowIndex];
           }
         }

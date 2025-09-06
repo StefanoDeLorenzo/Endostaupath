@@ -52,8 +52,10 @@ export class WorldLoader {
   getCoreChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
     const dv = new DataView(buffer);
     const headerSize = 11;
+    const GRID = REGION_SCHEMA.GRID;
 
-    const idx = chunkZ + REGION_SCHEMA.GRID * (chunkY + REGION_SCHEMA.GRID * chunkX);
+    // CORREZIONE: Ordine di indicizzazione per X-maggiore
+    const idx = chunkX + GRID * (chunkY + GRID * chunkZ);
     const off = headerSize + idx * 5;
 
     // offset a 24 bit
@@ -63,7 +65,8 @@ export class WorldLoader {
     if (chunkFileOffset === 0) return null;
 
     const size = REGION_SCHEMA.CHUNK_BYTES;
-    return new Uint8Array(buffer.slice(chunkFileOffset, chunkFileOffset + size));
+    const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + size);
+    return new Uint8Array(chunkBuffer);
   }
 
   getChunkDataFromMemory(regionX, regionY, regionZ, chunkX, chunkY, chunkZ) {
