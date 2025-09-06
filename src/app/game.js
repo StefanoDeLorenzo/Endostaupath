@@ -36,7 +36,7 @@ export class Game {
     };
 
     // Popola il "nuvolozzo" con le regioni iniziali
-    this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
+    await this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
 
     // Caricamento iniziale di due regioni all'avvio
     await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
