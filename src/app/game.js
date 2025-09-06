@@ -22,9 +22,6 @@ export class Game {
   }
 
   async start() {
-    // Caricamento iniziale di due regioni all'avvio (come nel tuo)
-    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
-    //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
     // Imposta la posizione iniziale della regione dopo il caricamento
     const p = this.player.position;
@@ -40,6 +37,10 @@ export class Game {
 
     // Popola il "nuvolozzo" con le regioni iniziali
     this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
+
+    // Caricamento iniziale di due regioni all'avvio
+    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
     this.engine.runRenderLoop(() => {
       this.scene.render();
