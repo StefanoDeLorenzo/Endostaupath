@@ -350,46 +350,63 @@ export class ChunkManager {
                 const regionKey = `${newRegionX + rx}_${newRegionY + ry}_${newRegionZ + rz}`;
                 const regionBuffer = this.worldLoader.regionsData.get(regionKey);
                 
-                // CORREZIONE: Controlla se il buffer della regione è vuoto (byteLength = 0)
-                if (!regionBuffer || regionBuffer.byteLength === 0) continue;
+                // CORREZIONE: Ora gestiamo sia le regioni che esistono che quelle vuote
+                if (regionBuffer && regionBuffer.byteLength > 0) {
+                  // Loop per i chunk all'interno della regione
+                  for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
+                      for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
+                          for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
+                              const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
+                                  regionBuffer, cx, cy, cz
+                              );
 
-                // Loop per i chunk all'interno della regione
-                for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
-                    for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
-                        for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
-                            const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
-                                regionBuffer, cx, cy, cz
-                            );
+                              if (!chunkData) continue;
 
-                            if (!chunkData) continue;
+                              const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
+                              const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
+                              const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
 
-                            const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
-                            const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
-                            const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
-
-                            let k = 0;
-                            for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
-                                for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
-                                    for (let x = 0; x < REGION_SCHEMA.CHUNK_SIZE; x++) {
-                                        const destX = startX + x;
-                                        const destY = startY + y;
-                                        const destZ = startZ + z;
-                                        
-                                        const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                                        
-                                        this.voxelWindow[destOffset] = chunkData[k++];
-                                    }
-                                }
-                            }
-                        }
-                    }
+                              let k = 0;
+                              for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
+                                  for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
+                                      for (let x = 0; x < REGION_SCHEMA.CHUNK_SIZE; x++) {
+                                          const destX = startX + x;
+                                          const destY = startY + y;
+                                          const destZ = startZ + z;
+                                          
+                                          const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                                          
+                                          this.voxelWindow[destOffset] = chunkData[k++];
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                } else {
+                  // Se la regione non esiste o è vuota, azzera l'area corrispondente nel voxelWindow
+                  const startX = (rx + 1) * REGION_SCHEMA.REGION_SPAN;
+                  const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN;
+                  const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN;
+                  
+                  for (let z = 0; z < REGION_SCHEMA.REGION_SPAN; z++) {
+                      for (let y = 0; y < REGION_SCHEMA.REGION_SPAN; y++) {
+                          for (let x = 0; x < REGION_SCHEMA.REGION_SPAN; x++) {
+                              const destX = startX + x;
+                              const destY = startY + y;
+                              const destZ = startZ + z;
+                              const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                              this.voxelWindow[destOffset] = 0; // Imposta a zero (aria)
+                          }
+                      }
+                  }
                 }
             }
         }
     }
 
     console.log("VoxelWindow aggiornata con successo.");
-}
+  }
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---
   // Aggiungilo a chunkManager.js
