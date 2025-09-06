@@ -16,7 +16,8 @@ export class WorldLoader {
       console.log(`WorldLoader: Caricamento del file ${regionPath}...`);
       const response = await fetch(regionPath);
       if (!response.ok) {
-        // Crea un buffer vuoto per la regione non trovata
+        console.error(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
+        // CORREZIONE: Aggiungi un buffer vuoto alla Map per segnare la regione come processata
         const emptyBuffer = new ArrayBuffer(0);
         this.regionsData.set(regionKey, emptyBuffer);
         this.loadedRegions.add(regionKey);
@@ -28,7 +29,9 @@ export class WorldLoader {
       this.loadedRegions.add(regionKey);
     } catch (err) {
       console.error(`Errore durante il caricamento della regione (${regionX}, ${regionY}, ${regionZ}):`, err);
-      // CORREZIONE: Aggiungi la regione a loadedRegions anche in caso di errore di rete
+      // CORREZIONE: Aggiungi un buffer vuoto alla Map anche in caso di errore di rete
+      const emptyBuffer = new ArrayBuffer(0);
+      this.regionsData.set(regionKey, emptyBuffer);
       this.loadedRegions.add(regionKey);
     }
   }
