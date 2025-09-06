@@ -365,7 +365,7 @@ export class ChunkManager {
                             const startY = (ry + 1) * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
                             const startZ = (rz + 1) * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
 
-                            // Ora correggiamo l'ordine dei cicli per la copia
+                            // Ora i cicli interni sono in ordine Z-maggiore per corrispondere a `destOffset`
                             let k = 0;
                             for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
                                 for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
@@ -374,7 +374,6 @@ export class ChunkManager {
                                         const destY = startY + y;
                                         const destZ = startZ + z;
                                         
-                                        // La formula per l'offset di destinazione è corretta
                                         const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
                                         
                                         this.voxelWindow[destOffset] = chunkData[k++];
@@ -389,7 +388,7 @@ export class ChunkManager {
     }
 
     console.log("VoxelWindow aggiornata con successo.");
-  }
+}
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---
   // Aggiungilo a chunkManager.js

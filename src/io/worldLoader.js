@@ -16,7 +16,9 @@ export class WorldLoader {
       console.log(`WorldLoader: Caricamento del file ${regionPath}...`);
       const response = await fetch(regionPath);
       if (!response.ok) {
-        console.error(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
+        // Crea un buffer vuoto per la regione non trovata
+        const emptyBuffer = new ArrayBuffer(0);
+        this.regionsData.set(regionKey, emptyBuffer);
         this.loadedRegions.add(regionKey);
         return;
       }
