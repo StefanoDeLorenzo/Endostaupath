@@ -4,6 +4,7 @@
 // - Shell: i 32x32x32 includono uno strato esterno, mappando le coord locali 0..31 → logiche -1..30
 // - Stesse costanti e VoxelTypes del tuo generator.js
 //
+// 
 // Output: ArrayBuffer nel formato legacy (.voxl) tramite Region.toBuffer().
 
 import { REGION_SCHEMA } from "./src/world/config.js";
@@ -64,9 +65,9 @@ const REGION_SPAN  = REGION_SCHEMA.GRID * CHUNK_SIZE; // es. 4*30 = 120
 
 function generateChunkData({ chunk, regionX, regionY, regionZ, chunkX, chunkY, chunkZ }) {
   // basi come nel tuo generator: region*120 + chunk*30
-  const baseX = regionX * REGION_SPAN + chunkX * LOGICAL_SIZE;
-  const baseY = regionY * REGION_SPAN + chunkY * LOGICAL_SIZE;
-  const baseZ = regionZ * REGION_SPAN + chunkZ * LOGICAL_SIZE;
+  const baseX = regionX * REGION_SPAN + chunkX * CHUNK_SIZE;
+  const baseY = regionY * REGION_SPAN + chunkY * CHUNK_SIZE;
+  const baseZ = regionZ * REGION_SPAN + chunkZ * CHUNK_SIZE;
 
   const scale = 0.05;
 
