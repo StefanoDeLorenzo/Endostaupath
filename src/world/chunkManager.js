@@ -331,25 +331,30 @@ export class ChunkManager {
     
     const regionPromises = [];
     for (let rx = -1; rx <= 1; rx++) {
-        for (let ry = 0; ry <= 0; ry++) { // Modificato per caricare solo un piano in Y
-            for (let rz = -1; rz <= 1; rz++) {
-                const promise = this.worldLoader.fetchAndStoreRegionData(
-                    newRegionX + rx, newRegionY + ry, newRegionZ + rz
-                );
-                regionPromises.push(promise);
-            }
+      for (let ry = -1; ry <= 1; ry++) {
+        for (let rz = -1; rz <= 1; rz++) {
+          const promise = this.worldLoader.fetchAndStoreRegionData(
+            newRegionX + rx,
+            newRegionY + ry,
+            newRegionZ + rz
+          );
+          regionPromises.push(promise);
         }
-    }
-    
-    // Attendi il completamento di tutte le chiamate
-    if(this.isInitialLoad) {
-        console.log("ChunkManager: Attesa del caricamento iniziale delle regioni...");
-        await Promise.all(regionPromises);
-        this.isInitialLoad = false;
-        console.log("ChunkManager: Caricamento iniziale completato.");
+      }
     }
 
-    return Promise.resolve(); // Restituisci una Promise per coerenza
+    const allRegionsLoaded = Promise.all(regionPromises);
+
+    // Attendi il completamento di tutte le chiamate durante il primo caricamento
+    if (this.isInitialLoad) {
+      console.log("ChunkManager: Attesa del caricamento iniziale delle regioni...");
+      await allRegionsLoaded;
+      this.isInitialLoad = false;
+      console.log("ChunkManager: Caricamento iniziale completato.");
+    }
+
+    // Restituisce la Promise combinata per gestire le chiamate anche successivamente
+    return allRegionsLoaded;
   }
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---
