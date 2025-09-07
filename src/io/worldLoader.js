@@ -11,15 +11,11 @@ export class WorldLoader {
   async fetchAndStoreRegionData(regionX, regionY, regionZ) {
     const regionKey = `${regionX}_${regionY}_${regionZ}`;
     if (this.loadedRegions.has(regionKey)) {
-      // If the region is already loaded, ensure the ChunkManager still gets
-      // notified so it can reposition voxels in the window when the
-      // window origin changes.
       if (this.chunkManager) {
-        this.chunkManager.onRegionDataReady(regionKey);
+        await this.chunkManager.onRegionDataReady(regionKey);
       }
       return;
     }
-
 
     // Aggiungi subito la chiave al set per evitare tentativi doppi
     this.loadedRegions.add(regionKey);
@@ -28,9 +24,8 @@ export class WorldLoader {
       const regionPath = `./regions/r.${regionX}.${regionY}.${regionZ}.voxl`;
       console.log(`WorldLoader: Caricamento del file ${regionPath}...`);
       const response = await fetch(regionPath);
-      
+
       if (!response.ok) {
-        // Log che mancava
         console.error(`Regione (${regionX}, ${regionY}, ${regionZ}) non trovata. Trattata come vuota.`);
         const emptyBuffer = new ArrayBuffer(0);
         this.regionsData.set(regionKey, emptyBuffer);
@@ -39,18 +34,17 @@ export class WorldLoader {
         console.log(`WorldLoader: File caricato. Dimensione: ${buffer.byteLength} byte.`);
         this.regionsData.set(regionKey, buffer);
       }
-      
-      // Notifica il chunkManager quando i dati di QUESTA regione sono pronti
+
       if (this.chunkManager) {
-        this.chunkManager.onRegionDataReady(regionKey);
+        await this.chunkManager.onRegionDataReady(regionKey);
       }
-      
+
     } catch (err) {
       console.error(`Errore durante il caricamento della regione (${regionX}, ${regionY}, ${regionZ}):`, err);
       const emptyBuffer = new ArrayBuffer(0);
       this.regionsData.set(regionKey, emptyBuffer);
       if (this.chunkManager) {
-        this.chunkManager.onRegionDataReady(regionKey);
+        await this.chunkManager.onRegionDataReady(regionKey);
       }
     }
   }
