@@ -33,6 +33,11 @@ export class Game {
     const currentRegionY = Math.floor(p.y / REGION_SCHEMA.REGION_SPAN);
     const currentRegionZ = Math.floor(p.z / REGION_SCHEMA.REGION_SPAN);
 
+    const currentChunkX = Math.floor((p.x - currentRegionX * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
+    const currentChunkY = Math.floor((p.y - currentRegionY * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
+    const currentChunkZ = Math.floor((p.z - currentRegionZ * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
+
+
     this.lastRegion = {
       x: currentRegionX, 
       y: currentRegionY, 
