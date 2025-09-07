@@ -21,7 +21,11 @@ export class ChunkManager {
     this.windowOrigin = { x: null, y: null, z: null };
 
     this.isInitialLoad = true; // Utile per il caricamento iniziale
-    
+
+    // Worker dedicato alla copia delle regioni
+    this.regionCopyWorker = null;
+    this.regionCopyWorkerReady = Promise.resolve();
+
 
     // MODIFICA: Inizializza il pool di worker
     this.initializeWorkerPool();
@@ -395,12 +399,11 @@ export class ChunkManager {
   }
 
     // Nuovo metodo chiamato da worldLoader
-  onRegionDataReady(regionKey) {
+  async onRegionDataReady(regionKey) {
     const regionBuffer = this.worldLoader.regionsData.get(regionKey);
     const [regionX, regionY, regionZ] = regionKey.split('_').map(Number);
     const windowOrigin = this.windowOrigin;
-    
-    
+
     // Calcola le coordinate relative all'interno della finestra
     const rx = regionX - windowOrigin.x;
     const ry = regionY - windowOrigin.y;
@@ -410,62 +413,30 @@ export class ChunkManager {
     if (rx < 0 || rx > 2 || ry < 0 || ry > 2 || rz < 0 || rz > 2) {
       return;
     }
-    
+
     const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
-    
-    if (regionBuffer && regionBuffer.byteLength > 0) {
-      // Logica per copiare i chunk dalla regione al voxelWindow
-      for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
-          for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
-              for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
-                  const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
-                      regionBuffer, cx, cy, cz
-                  );
 
-                  if (!chunkData) continue;
-
-                  const startX = rx * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
-                  const startY = ry * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
-                  const startZ = rz * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
-
-                  // Riorganizzati i cicli per iterare z -> y -> x e calcolare
-                  // manualmente l'indice del voxel nel chunk di origine
-                  const CHUNK_SIZE = REGION_SCHEMA.CHUNK_SIZE;
-                  for (let z = 0; z < CHUNK_SIZE; z++) {
-                      for (let y = 0; y < CHUNK_SIZE; y++) {
-                          for (let x = 0; x < CHUNK_SIZE; x++) {
-                              const destX = startX + x;
-                              const destY = startY + y;
-                              const destZ = startZ + z;
-
-                              const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                              const srcIndex = x + CHUNK_SIZE * (y + CHUNK_SIZE * z);
-
-                              this.voxelWindow[destOffset] = chunkData[srcIndex];
-                          }
-                      }
-                  }
-              }
-          }
-      }
-    } else {
-      // Se la regione è vuota, azzera l'area corrispondente nel voxelWindow
-      const startX = rx * REGION_SCHEMA.REGION_SPAN;
-      const startY = ry * REGION_SCHEMA.REGION_SPAN;
-      const startZ = rz * REGION_SCHEMA.REGION_SPAN;
-      
-      for (let x = 0; x < REGION_SCHEMA.REGION_SPAN; x++) {
-          for (let y = 0; y < REGION_SCHEMA.REGION_SPAN; y++) {
-              for (let z = 0; z < REGION_SCHEMA.REGION_SPAN; z++) {
-                  const destX = startX + x;
-                  const destY = startY + y;
-                  const destZ = startZ + z;
-                  const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                  this.voxelWindow[destOffset] = 0; // Imposta a zero (aria)
-              }
-          }
-      }
+    if (!this.regionCopyWorker) {
+      this.regionCopyWorker = new Worker(new URL('../worker/regionCopyWorker.js', import.meta.url), { type: 'module' });
+      this.regionCopyWorkerReady = Promise.resolve();
     }
+
+    // Accoda la copia sul worker per evitare trasferimenti simultanei del buffer
+    this.regionCopyWorkerReady = this.regionCopyWorkerReady.then(() => new Promise(resolve => {
+      this.regionCopyWorker.onmessage = (event) => {
+        const { regionBuffer: returnedRegionBuffer, windowBuffer } = event.data;
+        this.voxelWindow = new Uint8Array(windowBuffer);
+        this.worldLoader.regionsData.set(regionKey, returnedRegionBuffer);
+        resolve();
+      };
+
+      this.regionCopyWorker.postMessage(
+        { regionBuffer, windowBuffer: this.voxelWindow.buffer, rx, ry, rz, WINDOW_VOXEL_SPAN },
+        [regionBuffer, this.voxelWindow.buffer]
+      );
+    }));
+
+    return this.regionCopyWorkerReady;
   }
 
   printDebugInfo(playerPosition, chunksToLoad, loadedRegions) {
