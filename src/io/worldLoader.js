@@ -10,7 +10,16 @@ export class WorldLoader {
 
   async fetchAndStoreRegionData(regionX, regionY, regionZ) {
     const regionKey = `${regionX}_${regionY}_${regionZ}`;
-    if (this.loadedRegions.has(regionKey)) return;
+    if (this.loadedRegions.has(regionKey)) {
+      // If the region is already loaded, ensure the ChunkManager still gets
+      // notified so it can reposition voxels in the window when the
+      // window origin changes.
+      if (this.chunkManager) {
+        this.chunkManager.onRegionDataReady(regionKey);
+      }
+      return;
+    }
+
 
     // Aggiungi subito la chiave al set per evitare tentativi doppi
     this.loadedRegions.add(regionKey);
