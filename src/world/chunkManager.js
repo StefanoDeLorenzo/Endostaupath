@@ -172,7 +172,7 @@ export class ChunkManager {
     await Promise.all(tasks);
   }
 
-  findChunksToLoad(playerPosition, radius = 8) {
+  findChunksToLoad(playerPosition, radius = 2) {
     // Regione corrente basata su REGION_SPAN (4*30)
     const currentRegionX = Math.floor(playerPosition.x / REGION_SCHEMA.REGION_SPAN);
     const currentRegionY = Math.floor(playerPosition.y / REGION_SCHEMA.REGION_SPAN);
