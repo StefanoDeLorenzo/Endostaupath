@@ -57,10 +57,10 @@ function perlinNoise3D(x, y, z) {
  * Chunk "logico": 30. Grid di regione: 4. Quindi lo span della regione è 4*30=120.
  * Nel 32^3 inseriamo il guscio mappando (x,y,z) locali 0..31 → logici -1..30.
  */
-const SHELL_SIZE   = Chunk.SIZE;          // es. 32 (legacy attuale)
-const LOGICAL_SIZE = Chunk.SIZE; // - 2;      // shell 1-voxel per lato → 30 quando SIZE=32
-const SHELL_MARGIN = (SHELL_SIZE - LOGICAL_SIZE) >> 1; // =1 con SIZE=32 ; = 0 quando SIZE=30
-const REGION_SPAN  = REGION_SCHEMA.GRID * LOGICAL_SIZE; // es. 4*30 = 120
+const CHUNK_SIZE   = REGION_SCHEMA.CHUNK_SIZE;          // es. 32 (legacy attuale)
+//const LOGICAL_SIZE = REGION_SCHEMA.CHUNK_SIZE; // - 2;      // shell 1-voxel per lato → 30 quando SIZE=32
+//const SHELL_MARGIN = (CHUNK_SIZE - LOGICAL_SIZE) >> 1; // =1 con SIZE=32 ; = 0 quando SIZE=30
+const REGION_SPAN  = REGION_SCHEMA.GRID * CHUNK_SIZE; // es. 4*30 = 120
 
 function generateChunkData({ chunk, regionX, regionY, regionZ, chunkX, chunkY, chunkZ }) {
   // basi come nel tuo generator: region*120 + chunk*30
@@ -70,14 +70,14 @@ function generateChunkData({ chunk, regionX, regionY, regionZ, chunkX, chunkY, c
 
   const scale = 0.05;
 
-  for (let z = 0; z < SHELL_SIZE; z++) {
-    const lz = z - SHELL_MARGIN; // [-1 .. LOGICAL_SIZE]
+  for (let z = 0; z < CHUNK_SIZE; z++) {
+    const lz = z;
     const globalZ = baseZ + lz;
-    for (let y = 0; y < SHELL_SIZE; y++) {
-      const ly = y - SHELL_MARGIN; // logico: -1 .. LOGICAL_SIZE
+    for (let y = 0; y < CHUNK_SIZE; y++) {
+      const ly = y;
       const globalY = baseY + ly;
-      for (let x = 0; x < SHELL_SIZE; x++) {
-        const lx = x - SHELL_MARGIN; // logico: -1 .. LOGICAL_SIZE
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        const lx = x;
         const globalX = baseX + lx;
 
         let voxelType = VoxelTypes.Air;
