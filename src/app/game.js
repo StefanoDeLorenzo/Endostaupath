@@ -76,38 +76,42 @@ export class Game {
 
     this.engine.runRenderLoop(() => {
       this.scene.render();
-      this.checkCameraPosition();
+      void this.checkCameraPosition();
     });
 
     window.addEventListener("resize", () => this.engine.resize());
   }
 
-  checkCameraPosition() {
+  async checkCameraPosition() {
     const p = this.player.position;
 
-    const currentRegionX = Math.floor(p.x / REGION_SCHEMA.REGION_SPAN);
-    const currentRegionY = Math.floor(p.y / REGION_SCHEMA.REGION_SPAN);
-    const currentRegionZ = Math.floor(p.z / REGION_SCHEMA.REGION_SPAN);
+    const newRegionX = Math.floor(p.x / REGION_SCHEMA.REGION_SPAN);
+    const newRegionY = Math.floor(p.y / REGION_SCHEMA.REGION_SPAN);
+    const newRegionZ = Math.floor(p.z / REGION_SCHEMA.REGION_SPAN);
 
-    const currentChunkX = Math.floor((p.x - currentRegionX * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
-    const currentChunkY = Math.floor((p.y - currentRegionY * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
-    const currentChunkZ = Math.floor((p.z - currentRegionZ * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
+    const currentChunkX = Math.floor((p.x - newRegionX * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
+    const currentChunkY = Math.floor((p.y - newRegionY * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
+    const currentChunkZ = Math.floor((p.z - newRegionZ * REGION_SCHEMA.REGION_SPAN) / REGION_SCHEMA.CHUNK_SIZE);
 
     // Controlla se il giocatore è entrato in una nuova regione
-    if (currentRegionX !== this.lastRegion.x || currentRegionY !== this.lastRegion.y || currentRegionZ !== this.lastRegion.z) {
-      
+    if (newRegionX !== this.lastRegion.x || newRegionY !== this.lastRegion.y || newRegionZ !== this.lastRegion.z) {
+
       // Chiama il metodo per aggiornare il "nuvolozzo" di voxel
-      this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
-      
+      this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ)
+        .then(() => {
+          const chunks = this.chunkManager.findChunksToLoad(this.player.position);
+          if (chunks.length) this.chunkManager.loadMissingChunks(chunks);
+        });
+
       // Aggiorna l'ultima posizione della regione per il prossimo controllo
-      this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
+      this.lastRegion = { x: newRegionX, y: newRegionY, z: newRegionZ };
     }
 
     if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
-      
+
       const chunksToLoad = this.chunkManager.findChunksToLoad(p);
       if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
-      
+
       this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
       this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
     }
