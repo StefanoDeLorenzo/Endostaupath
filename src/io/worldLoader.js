@@ -49,9 +49,10 @@ export class WorldLoader {
   getChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
     const dv = new DataView(buffer);
     const headerSize = 11;
+    const GRID = REGION_SCHEMA.GRID;
 
-    // Ordine di indicizzazione come nel writer: z + GRID*(y + GRID*x)
-    const idx = chunkX + REGION_SCHEMA.GRID * (chunkY + REGION_SCHEMA.GRID * chunkZ);
+    // Calcola l'indice con ordine X→Y→Z
+    const idx = ((chunkX * GRID) + chunkY) * GRID + chunkZ;
     const off = headerSize + idx * 5;
 
     // offset a 24 bit (big-endian)
@@ -71,8 +72,8 @@ export class WorldLoader {
     const headerSize = 11;
     const GRID = REGION_SCHEMA.GRID;
 
-    // CORREZIONE: Ordine di indicizzazione per X-maggiore
-    const idx = chunkX + GRID * (chunkY + GRID * chunkZ);
+    // Calcola l'indice con ordine X→Y→Z
+    const idx = ((chunkX * GRID) + chunkY) * GRID + chunkZ;
     const off = headerSize + idx * 5;
 
     // offset a 24 bit
