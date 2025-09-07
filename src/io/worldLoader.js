@@ -2,7 +2,7 @@
 import { REGION_SCHEMA } from '../world/config.js';
 
 export class WorldLoader {
-  constructor() {
+  constructor(chunkManager) {
     this.loadedRegions = new Set();
     this.regionsData = new Map(); // key -> ArrayBuffer
     this.chunkManager = chunkManager; // Memorizza il riferimento al ChunkManager
