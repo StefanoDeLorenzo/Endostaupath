@@ -17,7 +17,7 @@ adesso mi accingo a:
 3. Nel `runRenderLoop` richiamare `checkCameraPosition` senza `await` (`void this.checkCameraPosition();`) per mantenere fluido il rendering.
 
 
--Rendere asincrono il trasferimento dei voxel in onRegionDataReady: ToDo
+-Rendere asincrono il trasferimento dei voxel in onRegionDataReady: ToDo (sarà difficile)
 1. In src/world/chunkManager.js, dentro onRegionDataReady, spostare i cicli di copia (linee 416-451) in un Web Worker dedicato (type: "module") se necessario usando un transferable ArrayBuffer.
 
 2. Aggiornare fetchAndStoreRegionData (src/io/worldLoader.js) affinché invochi un metodo asincrono che ritorna una Promise (no callback) e attenda il termine della copia.
