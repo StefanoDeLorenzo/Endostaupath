@@ -19,6 +19,7 @@ export class ChunkManager {
 // Nuvolo di voxel per la generazione della mesh
     this.voxelWindow = null;
     this.windowOrigin = { x: null, y: null, z: null };
+    
 
     // MODIFICA: Inizializza il pool di worker
     this.initializeWorkerPool();
@@ -380,6 +381,7 @@ export class ChunkManager {
     const regionBuffer = this.worldLoader.regionsData.get(regionKey);
     const [regionX, regionY, regionZ] = regionKey.split('_').map(Number);
     const windowOrigin = this.windowOrigin;
+    
     
     // Calcola le coordinate relative all'interno della finestra
     const rx = regionX - windowOrigin.x;

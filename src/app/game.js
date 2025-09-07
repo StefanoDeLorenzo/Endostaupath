@@ -21,6 +21,8 @@ export class Game {
 
     this.lastChunk = { x: null, y: null, z: null };
     this.lastRegion = { x: null, y: null, z: null };
+
+    this.isInitialRegionLoaded = false; // Utile in fase di inizializzazione del gioco
   }
 
   async start() {
@@ -73,6 +75,10 @@ export class Game {
       this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
     }
 
+    if(this.isInitialRegionLoaded===false) {
+      this.isInitialRegionLoaded = true;
+      this.chunkManager.loadRegionAndMeshAllChunks(currentRegionX, currentRegionY, currentRegionZ);
+    }
 
     if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
       
