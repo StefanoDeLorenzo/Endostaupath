@@ -41,10 +41,21 @@ export class Game {
 
     // Popola il "nuvolozzo" con le regioni iniziali
     this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
+    this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
 
     // Caricamento iniziale di due regioni all'avvio
     //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
     //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
+
+    if(!this.isInitialRegionLoaded) {
+      this.isInitialRegionLoaded = true;
+      const chunksToLoad = this.chunkManager.findChunksToLoad(p);
+      if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
+      
+      this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
+      this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
+    }
+
 
     this.engine.runRenderLoop(() => {
       this.scene.render();
@@ -73,15 +84,6 @@ export class Game {
       
       // Aggiorna l'ultima posizione della regione per il prossimo controllo
       this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
-    }
-
-    if(!this.isInitialRegionLoaded) {
-      this.isInitialRegionLoaded = true;
-      const chunksToLoad = this.chunkManager.findChunksToLoad(p);
-      if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
-      
-      this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
-      this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
     }
 
     if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
