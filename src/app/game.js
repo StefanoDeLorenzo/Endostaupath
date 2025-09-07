@@ -43,7 +43,7 @@ export class Game {
     this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
 
     // Caricamento iniziale di due regioni all'avvio
-    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
     //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
     this.engine.runRenderLoop(() => {
@@ -77,7 +77,11 @@ export class Game {
 
     if(this.isInitialRegionLoaded===false) {
       this.isInitialRegionLoaded = true;
-      this.chunkManager.loadRegionAndMeshAllChunks(currentRegionX, currentRegionY, currentRegionZ);
+      const chunksToLoad = this.chunkManager.findChunksToLoad(p);
+      if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
+      
+      this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
+      this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
     }
 
     if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
