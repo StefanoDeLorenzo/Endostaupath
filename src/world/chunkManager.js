@@ -19,6 +19,8 @@ export class ChunkManager {
 // Nuvolo di voxel per la generazione della mesh
     this.voxelWindow = null;
     this.windowOrigin = { x: null, y: null, z: null };
+
+    this.isInitialLoad = true; // Utile per il caricamento iniziale
     
 
     // MODIFICA: Inizializza il pool di worker
@@ -303,10 +305,9 @@ export class ChunkManager {
     }
 
   // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
-  updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
+  async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
     console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
 
-    // Inizializza this.voxelWindow se è nullo
     if (this.voxelWindow === null) {
       const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
       this.voxelWindow = new Uint8Array(WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN);
@@ -322,21 +323,33 @@ export class ChunkManager {
         this.windowOrigin.y === newWindowOrigin.y &&
         this.windowOrigin.z === newWindowOrigin.z) {
       console.log('Nessun cambio di regione. Uscita da updateVoxelWindow.');
-      return;
+      // Se non c'è un cambio, ritorna una Promise risolta immediatamente
+      return Promise.resolve();
     }
 
     this.windowOrigin = newWindowOrigin;
-
-    // Avvia il caricamento delle regioni ma non aspettare!
+    
+    const regionPromises = [];
     for (let rx = -1; rx <= 1; rx++) {
-        for (let ry = -1; ry <= 1; ry++) {
+        for (let ry = 0; ry <= 0; ry++) { // Modificato per caricare solo un piano in Y
             for (let rz = -1; rz <= 1; rz++) {
-                this.worldLoader.fetchAndStoreRegionData(
+                const promise = this.worldLoader.fetchAndStoreRegionData(
                     newRegionX + rx, newRegionY + ry, newRegionZ + rz
                 );
+                regionPromises.push(promise);
             }
         }
     }
+    
+    // Attendi il completamento di tutte le chiamate
+    if(this.isInitialLoad) {
+        console.log("ChunkManager: Attesa del caricamento iniziale delle regioni...");
+        await Promise.all(regionPromises);
+        this.isInitialLoad = false;
+        console.log("ChunkManager: Caricamento iniziale completato.");
+    }
+
+    return Promise.resolve(); // Restituisci una Promise per coerenza
   }
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---

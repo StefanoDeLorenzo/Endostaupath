@@ -22,7 +22,6 @@ export class Game {
     this.lastChunk = { x: null, y: null, z: null };
     this.lastRegion = { x: null, y: null, z: null };
 
-    this.isInitialRegionLoaded = false; // Utile in fase di inizializzazione del gioco
   }
 
   async start() {
@@ -45,24 +44,24 @@ export class Game {
     };
 
     // Popola il "nuvolozzo" con le regioni iniziali
-    this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
+    await this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
     this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
 
     // Caricamento iniziale di due regioni all'avvio
     //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
     //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
-    if(!this.isInitialRegionLoaded) {
-      console.log("-----------------------------------------");
-      console.log("Sono in start, carico la regione iniziale...");
-      console.log("-----------------------------------------");
-      this.isInitialRegionLoaded = true;
-      const chunksToLoad = this.chunkManager.findChunksToLoad(p);
-      if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
-      
-      this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
-      this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
-    }
+    
+    console.log("-----------------------------------------");
+    console.log("Sono in start, carico la regione iniziale...");
+    console.log("-----------------------------------------");
+    
+    const chunksToLoad = this.chunkManager.findChunksToLoad(p);
+    if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
+     
+    this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
+    this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
+    
 
 
     this.engine.runRenderLoop(() => {
