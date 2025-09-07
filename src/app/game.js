@@ -53,6 +53,9 @@ export class Game {
     //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
     if(!this.isInitialRegionLoaded) {
+      console.log("-----------------------------------------");
+      console.log("Sono in start, carico la regione iniziale...");
+      console.log("-----------------------------------------");
       this.isInitialRegionLoaded = true;
       const chunksToLoad = this.chunkManager.findChunksToLoad(p);
       if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
