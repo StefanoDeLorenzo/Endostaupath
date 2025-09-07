@@ -21,6 +21,7 @@ export class Game {
 
     this.lastChunk = { x: null, y: null, z: null };
     this.lastRegion = { x: null, y: null, z: null };
+    this.isUpdatingRegion = false;
 
   }
 
@@ -96,15 +97,19 @@ export class Game {
     // Controlla se il giocatore è entrato in una nuova regione
     if (newRegionX !== this.lastRegion.x || newRegionY !== this.lastRegion.y || newRegionZ !== this.lastRegion.z) {
 
-      // Chiama il metodo per aggiornare il "nuvolozzo" di voxel
-      this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ)
-        .then(() => {
+      if (!this.isUpdatingRegion) {
+        this.isUpdatingRegion = true;
+        try {
+          // Aggiorna il "nuvolozzo" di voxel e carica i chunk solo dopo l'aggiornamento
+          await this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ);
           const chunks = this.chunkManager.findChunksToLoad(this.player.position);
           if (chunks.length) this.chunkManager.loadMissingChunks(chunks);
-        });
-
-      // Aggiorna l'ultima posizione della regione per il prossimo controllo
-      this.lastRegion = { x: newRegionX, y: newRegionY, z: newRegionZ };
+          // Aggiorna l'ultima posizione della regione per il prossimo controllo
+          this.lastRegion = { x: newRegionX, y: newRegionY, z: newRegionZ };
+        } finally {
+          this.isUpdatingRegion = false;
+        }
+      }
     }
 
     if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
