@@ -423,18 +423,20 @@ export class ChunkManager {
                   const startY = ry * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
                   const startZ = rz * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
 
-                  let k = 0;
-                  // CORREZIONE: Ordine dei loop per allinearsi al generatore (x, y, z)
-                  for (let x = 0; x < REGION_SCHEMA.CHUNK_SIZE; x++) {
-                      for (let y = 0; y < REGION_SCHEMA.CHUNK_SIZE; y++) {
-                          for (let z = 0; z < REGION_SCHEMA.CHUNK_SIZE; z++) {
+                  // Riorganizzati i cicli per iterare z -> y -> x e calcolare
+                  // manualmente l'indice del voxel nel chunk di origine
+                  const CHUNK_SIZE = REGION_SCHEMA.CHUNK_SIZE;
+                  for (let z = 0; z < CHUNK_SIZE; z++) {
+                      for (let y = 0; y < CHUNK_SIZE; y++) {
+                          for (let x = 0; x < CHUNK_SIZE; x++) {
                               const destX = startX + x;
                               const destY = startY + y;
                               const destZ = startZ + z;
-                              
+
                               const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-                              
-                              this.voxelWindow[destOffset] = chunkData[k++];
+                              const srcIndex = x + CHUNK_SIZE * (y + CHUNK_SIZE * z);
+
+                              this.voxelWindow[destOffset] = chunkData[srcIndex];
                           }
                       }
                   }
