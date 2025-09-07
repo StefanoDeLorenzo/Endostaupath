@@ -50,17 +50,17 @@ export class Game {
     // Caricamento iniziale di due regioni all'avvio
     await this.chunkManager.loadRegionAndMeshAllChunks(0, 1, 0);
     await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
-    await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
-    await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, 0);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, 0);
 
     
-    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 1);
-    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, -1);
-    await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, -1);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 1);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, -1);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, -1);
 
-    await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 1);
-    await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, 1);
-    await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, -1);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 1);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, 1);
+    //await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, -1);
     
     console.log("-----------------------------------------");
     console.log("Sono in start, carico la regione iniziale...");
