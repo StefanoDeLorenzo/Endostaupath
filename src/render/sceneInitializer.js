@@ -16,7 +16,7 @@ export class SceneInitializer {
   }
 
   _createCamera() {
-    const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(60, 60, 60), this.scene);
+    const camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(0, 60, 0), this.scene);
     camera.setTarget(new BABYLON.Vector3(60, 0, 60));
     camera.inertia = 0.5;
     camera.angularSensibility = 1500;
