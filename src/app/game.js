@@ -48,20 +48,20 @@ export class Game {
     this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
 
     // Caricamento iniziale di due regioni all'avvio
-    //await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
+    await this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
     //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
 
     
     console.log("-----------------------------------------");
     console.log("Sono in start, carico la regione iniziale...");
     console.log("-----------------------------------------");
-    
+    /*
     const chunksToLoad = this.chunkManager.findChunksToLoad(p);
     if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
      
     this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
     this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
-    
+    */
 
 
     this.engine.runRenderLoop(() => {
