@@ -75,7 +75,7 @@ export class Game {
       this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
     }
 
-    if(this.isInitialRegionLoaded===false) {
+    if(!this.isInitialRegionLoaded) {
       this.isInitialRegionLoaded = true;
       const chunksToLoad = this.chunkManager.findChunksToLoad(p);
       if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
