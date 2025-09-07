@@ -1,4 +1,4 @@
-// src/app/game.js
+// src/app/game.js //Provo a mettere a posto il caricamento delle regioni e dei chunk 070925
 import { SceneInitializer } from '../render/sceneInitializer.js';
 import { WorldLoader } from '../io/worldLoader.js';
 import { ChunkManager } from '../world/chunkManager.js';
