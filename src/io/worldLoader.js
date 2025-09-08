@@ -15,7 +15,7 @@ export class WorldLoader {
       // notified so it can reposition voxels in the window when the
       // window origin changes.
       if (this.chunkManager) {
-        return await this.chunkManager.onRegionDataReady(regionKey);
+        this.chunkManager.onRegionDataReady(regionKey);
       }
       return;
     }
@@ -42,15 +42,15 @@ export class WorldLoader {
       
       // Notifica il chunkManager quando i dati di QUESTA regione sono pronti
       if (this.chunkManager) {
-        return await this.chunkManager.onRegionDataReady(regionKey);
+        this.chunkManager.onRegionDataReady(regionKey);
       }
-
+      
     } catch (err) {
       console.error(`Errore durante il caricamento della regione (${regionX}, ${regionY}, ${regionZ}):`, err);
       const emptyBuffer = new ArrayBuffer(0);
       this.regionsData.set(regionKey, emptyBuffer);
       if (this.chunkManager) {
-        return await this.chunkManager.onRegionDataReady(regionKey);
+        this.chunkManager.onRegionDataReady(regionKey);
       }
     }
   }

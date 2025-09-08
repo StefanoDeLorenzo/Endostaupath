@@ -21,14 +21,10 @@ export class ChunkManager {
     this.windowOrigin = { x: null, y: null, z: null };
 
     this.isInitialLoad = true; // Utile per il caricamento iniziale
-
+    
 
     // MODIFICA: Inizializza il pool di worker
     this.initializeWorkerPool();
-
-    // Worker dedicato alla copia dei voxel nella finestra
-    this.voxelWorker = new Worker(new URL('../worker/voxelWindowWorker.js', import.meta.url), { type: 'module' });
-    this._voxelWorkerId = 0;
   }
 
   initializeWorkerPool() {
@@ -403,47 +399,73 @@ export class ChunkManager {
     const regionBuffer = this.worldLoader.regionsData.get(regionKey);
     const [regionX, regionY, regionZ] = regionKey.split('_').map(Number);
     const windowOrigin = this.windowOrigin;
-
+    
+    
+    // Calcola le coordinate relative all'interno della finestra
     const rx = regionX - windowOrigin.x;
     const ry = regionY - windowOrigin.y;
     const rz = regionZ - windowOrigin.z;
 
-    // Regione fuori dalla finestra
+    // Se la regione non è più nella finestra (il giocatore si è spostato)
     if (rx < 0 || rx > 2 || ry < 0 || ry > 2 || rz < 0 || rz > 2) {
-      return Promise.resolve();
+      return;
     }
+    
+    const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
+    
+    if (regionBuffer && regionBuffer.byteLength > 0) {
+      // Logica per copiare i chunk dalla regione al voxelWindow
+      for (let cx = 0; cx < REGION_SCHEMA.GRID; cx++) {
+          for (let cy = 0; cy < REGION_SCHEMA.GRID; cy++) {
+              for (let cz = 0; cz < REGION_SCHEMA.GRID; cz++) {
+                  const chunkData = this.worldLoader.getCoreChunkDataFromRegionBuffer(
+                      regionBuffer, cx, cy, cz
+                  );
 
-    const REGION_SPAN = REGION_SCHEMA.REGION_SPAN;
-    const WINDOW_VOXEL_SPAN = 3 * REGION_SPAN;
-    const startX = rx * REGION_SPAN;
-    const startY = ry * REGION_SPAN;
-    const startZ = rz * REGION_SPAN;
+                  if (!chunkData) continue;
 
-    const id = this._voxelWorkerId++;
-    return new Promise((resolve) => {
-      const handler = (event) => {
-        const data = event.data;
-        if (data.type === 'regionCopied' && data.id === id) {
-          this.voxelWorker.removeEventListener('message', handler);
-          const regionData = data.regionData;
+                  const startX = rx * REGION_SCHEMA.REGION_SPAN + cx * REGION_SCHEMA.CHUNK_SIZE;
+                  const startY = ry * REGION_SCHEMA.REGION_SPAN + cy * REGION_SCHEMA.CHUNK_SIZE;
+                  const startZ = rz * REGION_SCHEMA.REGION_SPAN + cz * REGION_SCHEMA.CHUNK_SIZE;
 
-          for (let z = 0; z < REGION_SPAN; z++) {
-            const destZ = startZ + z;
-            const srcZStart = z * REGION_SPAN * REGION_SPAN;
-            for (let y = 0; y < REGION_SPAN; y++) {
-              const destY = startY + y;
-              const destOffset = startX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
-              const srcStart = srcZStart + y * REGION_SPAN;
-              this.voxelWindow.set(regionData.subarray(srcStart, srcStart + REGION_SPAN), destOffset);
-            }
+                  // Riorganizzati i cicli per iterare z -> y -> x e calcolare
+                  // manualmente l'indice del voxel nel chunk di origine
+                  const CHUNK_SIZE = REGION_SCHEMA.CHUNK_SIZE;
+                  for (let z = 0; z < CHUNK_SIZE; z++) {
+                      for (let y = 0; y < CHUNK_SIZE; y++) {
+                          for (let x = 0; x < CHUNK_SIZE; x++) {
+                              const destX = startX + x;
+                              const destY = startY + y;
+                              const destZ = startZ + z;
+
+                              const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                              const srcIndex = x + CHUNK_SIZE * (y + CHUNK_SIZE * z);
+
+                              this.voxelWindow[destOffset] = chunkData[srcIndex];
+                          }
+                      }
+                  }
+              }
           }
-          resolve();
-        }
-      };
-
-      this.voxelWorker.addEventListener('message', handler);
-      this.voxelWorker.postMessage({ id, regionBuffer, rx, ry, rz, REGION_SCHEMA });
-    });
+      }
+    } else {
+      // Se la regione è vuota, azzera l'area corrispondente nel voxelWindow
+      const startX = rx * REGION_SCHEMA.REGION_SPAN;
+      const startY = ry * REGION_SCHEMA.REGION_SPAN;
+      const startZ = rz * REGION_SCHEMA.REGION_SPAN;
+      
+      for (let x = 0; x < REGION_SCHEMA.REGION_SPAN; x++) {
+          for (let y = 0; y < REGION_SCHEMA.REGION_SPAN; y++) {
+              for (let z = 0; z < REGION_SCHEMA.REGION_SPAN; z++) {
+                  const destX = startX + x;
+                  const destY = startY + y;
+                  const destZ = startZ + z;
+                  const destOffset = destX + destY * WINDOW_VOXEL_SPAN + destZ * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN;
+                  this.voxelWindow[destOffset] = 0; // Imposta a zero (aria)
+              }
+          }
+      }
+    }
   }
 
   printDebugInfo(playerPosition, chunksToLoad, loadedRegions) {
