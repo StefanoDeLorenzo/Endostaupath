@@ -29,7 +29,7 @@ export class WorldLoader {
         this.regionsData.set(regionKey, emptyBuffer);
       } else {
         const buffer = await response.arrayBuffer();
-        console.log(`WorldLoader: File caricato. Dimensione: ${buffer.byteLength} byte.`);
+        console.log(`WorldLoader: File caricato. Dimensione: ${buffer.byteLength} byte. Regione: (${regionX}, ${regionY}, ${regionZ})`);
         this.regionsData.set(regionKey, buffer);
       }
       
