@@ -1,6 +1,9 @@
 Creo questo file solo per comodità è per segnare quello che sto per fare.. 
 
-TODO: ricordarsi di aumentare la distanza visiva, adesso  è molto bassa è stata utile in fase di test
+TODO: 
+- ricordarsi di aumentare la distanza visiva, adesso  è molto bassa è stata utile in fase di test
+- implemetare l uso del SharedArrayBuffer per la copia dei dati dentro la VoxelWindow
+
 
 adesso mi accingo a:
 -Caricare i chunk solo dopo il completamento di updateVoxelWindow: - test OK
