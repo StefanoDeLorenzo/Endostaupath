@@ -20,7 +20,7 @@ function getCoreChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
 }
 
 self.onmessage = (event) => {
-  const { type, regionBuffers, windowOrigin } = event.data;
+  const { type, regionBuffers, windowOrigin, id } = event.data;
   if (type !== 'updateVoxelWindow') return;
 
   const { GRID, CHUNK_SIZE, REGION_SPAN } = REGION_SCHEMA;
@@ -44,7 +44,7 @@ self.onmessage = (event) => {
           for (let cz = 0; cz < GRID; cz++) {
             for (let cy = 0; cy < GRID; cy++) {
               for (let cx = 0; cx < GRID; cx++) {
-                const chunkData = getCoreChunkDataFromRegionBuffer(buffer, cx, cy, cz);
+                const chunkData = getCoreChunkDataFromRegionBuffer(regionBuffers, cx, cy, cz);
                 const chunkBaseX = baseX + cx * CHUNK_SIZE;
                 const chunkBaseY = baseY + cy * CHUNK_SIZE;
                 const chunkBaseZ = baseZ + cz * CHUNK_SIZE;
@@ -85,7 +85,7 @@ self.onmessage = (event) => {
   }
 
   self.postMessage(
-    { type: 'voxelWindowUpdated', voxelWindow: windowBuffer.buffer, windowOrigin },
+    { type: 'voxelWindowUpdated', id, voxelWindow: windowBuffer.buffer, windowOrigin },
     [windowBuffer.buffer]
   );
 };
