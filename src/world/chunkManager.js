@@ -24,6 +24,8 @@ export class ChunkManager {
       { type: 'module' }
     );
 
+    this._voxelWindowOpId = 0;
+
     // MODIFICA: Inizializza il pool di worker
     this.initializeWorkerPool();
   }
