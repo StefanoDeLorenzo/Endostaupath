@@ -44,9 +44,12 @@ export class Game {
       z: currentRegionZ
     };
 
+    this.lastChunk = { x: -1, y: -1, z: -1 }; // Assicura che il primo chunk venga caricato
+    
     // Popola il "nuvolozzo" con le regioni iniziali
     await this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
     this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
+    
 
     // Caricamento iniziale di due regioni all'avvio
     //await this.chunkManager.loadRegionAndMeshAllChunks(0, 1, 0);
@@ -99,26 +102,27 @@ export class Game {
 
       if (!this.isUpdatingRegion) {
         this.isUpdatingRegion = true;
-        try {
+        
           // Aggiorna il "nuvolozzo" di voxel e carica i chunk solo dopo l'aggiornamento
-          await this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ);
-          const chunks = this.chunkManager.findChunksToLoad(this.player.position);
-          if (chunks.length) this.chunkManager.loadMissingChunks(chunks);
-          // Aggiorna l'ultima posizione della regione per il prossimo controllo
-          this.lastRegion = { x: newRegionX, y: newRegionY, z: newRegionZ };
-        } finally {
-          this.isUpdatingRegion = false;
-        }
+          this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ)
+                .then(() => {
+                    this.isUpdatingRegion = false;
+                    this.lastRegion = { x: newRegionX, y: newRegionY, z: newRegionZ };
+                })
+        
       }
     }
 
-    if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
+    // Controlla se il caricamento dei chunk è possibile
+    if (!this.isUpdatingRegion && this.chunkManager.voxelWindow) {
+      if (currentChunkX !== this.lastChunk.x || currentChunkY !== this.lastChunk.y || currentChunkZ !== this.lastChunk.z) {
 
-      const chunksToLoad = this.chunkManager.findChunksToLoad(p);
-      if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
+        const chunksToLoad = this.chunkManager.findChunksToLoad(p);
+        if (chunksToLoad.length > 0) this.chunkManager.loadMissingChunks(chunksToLoad);
 
-      this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
-      this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
+        this.chunkManager.printDebugInfo(p, chunksToLoad, this.worldLoader.loadedRegions);
+        this.lastChunk = { x: currentChunkX, y: currentChunkY, z: currentChunkZ };
+      }
     }
 
     this.chunkManager.unloadFarChunks(p);
