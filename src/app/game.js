@@ -47,7 +47,7 @@ export class Game {
     this.lastChunk = { x: -1, y: -1, z: -1 }; // Assicura che il primo chunk venga caricato
     
     // Popola il "nuvolozzo" con le regioni iniziali
-    await this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
+    this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
     this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
     
 

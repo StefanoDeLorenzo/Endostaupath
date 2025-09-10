@@ -25,6 +25,10 @@ const getChunkDataFromRegionBuffer = (buffer, chunkX, chunkY, chunkZ) => {
 self.onmessage = (event) => {
     const { type, regionBuffers, windowOrigin } = event.data;
 
+
+    console.log(`Worker VoxelWindow carica la regione: ${regionBuffers} byte.`);
+
+
     if (type === 'updateVoxelWindow') {
         const { CHUNK_SIZE_SHELL, CHUNK_SIZE, REGION_SPAN, GRID } = REGION_SCHEMA;
         const regionCount = GRID + 2;
