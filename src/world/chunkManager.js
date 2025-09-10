@@ -305,63 +305,105 @@ export class ChunkManager {
         }
     }
 
-  // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
-  async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
-    console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
+  // campi suggeriti nel costruttore della classe:
+  // this.isInitialLoad = true;
+  // this.windowOrigin = { x: Infinity, y: Infinity, z: Infinity };
+  // this._voxelWindowOpId = 0;                 // per gestire risposte fuori ordine
+  // this.voxelWindowUpdater = new Worker(...); // già creato altrove
 
-    if (this.voxelWindow === null) {
+  async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
+    console.log(`Aggiornamento finestra voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
+
+    // 1) Inizializza voxelWindow alla prima chiamata
+    if (!this.voxelWindow) {
       const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
       this.voxelWindow = new Uint8Array(WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN);
     }
-    const windowOrigin = {
+
+    // 2) Calcola l'origine della finestra 3×3×3 attorno alla nuova regione
+    const newWindowOrigin = {
       x: newRegionX - 1,
       y: newRegionY - 1,
       z: newRegionZ - 1
     };
 
-    this.windowOrigin = windowOrigin;
+    // 3) Se la finestra non cambia, non fare nulla
+    if (
+      this.windowOrigin &&
+      this.windowOrigin.x === newWindowOrigin.x &&
+      this.windowOrigin.y === newWindowOrigin.y &&
+      this.windowOrigin.z === newWindowOrigin.z
+    ) {
+      console.log('Nessun cambio di finestra. Esco da updateVoxelWindow.');
+      return Promise.resolve(); // compatibile con il tuo .then(...)
+    }
 
-    const regionBuffers = {};
-    const fetches = [];
+    // Aggiorna l’origine
+    this.windowOrigin = newWindowOrigin;
 
+    // 4) Assicurati che tutte le 27 regioni siano presenti (fetch -1..1)
+    const regionPromises = [];
+    const keys = []; // memorizzo l'ordine dei 27 key per ricostruire i buffer
     for (let rx = -1; rx <= 1; rx++) {
       for (let ry = -1; ry <= 1; ry++) {
         for (let rz = -1; rz <= 1; rz++) {
-          const regionX = newRegionX + rx;
-          const regionY = newRegionY + ry;
-          const regionZ = newRegionZ + rz;
-          const regionKey = `${regionX}_${regionY}_${regionZ}`;
-          const buffer = this.worldLoader.regionsData.get(regionKey);
-
-          if (buffer) {
-            regionBuffers[regionKey] = buffer;
-          } else {
-            fetches.push(
-              this.worldLoader
-                .fetchAndStoreRegionData(regionX, regionY, regionZ)
-                .then(() => {
-                  regionBuffers[regionKey] = this.worldLoader.regionsData.get(regionKey);
-                })
-            );
+          const R = { x: newRegionX + rx, y: newRegionY + ry, z: newRegionZ + rz };
+          const key = `${R.x}_${R.y}_${R.z}`;
+          keys.push(key);
+          // se non c'è già in cache, fetch; altrimenti Promise risolta
+          if (!this.worldLoader.regionsData.has(key)) {
+            regionPromises.push(this.worldLoader.fetchAndStoreRegionData(R.x, R.y, R.z));
           }
         }
       }
     }
 
-    await Promise.all(fetches);
+    // Attendo che i fetch mancanti finiscano: serve per avere i buffer da passare al worker
+    await Promise.all(regionPromises);
 
-    return new Promise((resolve) => {
-      this.voxelWindowUpdater.onmessage = (event) => {
-        if (event.data.type === 'voxelWindowUpdated') {
-          this.voxelWindow = new Uint8Array(event.data.voxelWindow);
+    // Primo caricamento: fai sapere al chiamante che hai davvero finito i fetch
+    if (this.isInitialLoad) {
+      console.log('ChunkManager: caricamento iniziale delle regioni completato.');
+      this.isInitialLoad = false;
+    }
+
+    // 5) Prepara i buffer regione da inviare al worker (27 voci)
+    //    NB: NON uso transfer list sui buffer delle regioni, così restano in cache.
+    const regionBuffers = [];
+    for (const key of keys) {
+      const buf = this.worldLoader.regionsData.get(key) || null; // se mancante → null (il worker riempirà di 0)
+      regionBuffers.push({ key, buffer: buf });
+    }
+
+    // 6) Invoca il worker per comporre la voxelWindow
+    const reqId = ++this._voxelWindowOpId;
+
+    return new Promise((resolve, reject) => {
+      const onMessage = (event) => {
+        const { type, id, voxelWindow, error } = event.data || {};
+
+        // Ignora risposte vecchie (se l’utente si muove velocemente e parte un’altra richiesta)
+        if (id !== reqId) return;
+
+        if (type === 'voxelWindowUpdated') {
+          this.voxelWindow = new Uint8Array(voxelWindow); // risultato pronto (puoi anche fare .set se vuoi riusare il buffer)
+          this.voxelWindowUpdater.removeEventListener('message', onMessage);
           resolve();
+        } else if (type === 'voxelWindowError') {
+          this.voxelWindowUpdater.removeEventListener('message', onMessage);
+          reject(new Error(error || 'voxelWindowUpdater error'));
         }
       };
 
+      this.voxelWindowUpdater.addEventListener('message', onMessage);
+
+      // Dati minimi che il worker si aspetta
       this.voxelWindowUpdater.postMessage({
         type: 'updateVoxelWindow',
-        regionBuffers,
-        windowOrigin
+        id: reqId,
+        regionBuffers,                // [{ key, buffer: ArrayBuffer|null }, ...]
+        windowOrigin: this.windowOrigin // {x,y,z} region-coords della finestra (angolo minimo)
+        
       });
     });
   }
