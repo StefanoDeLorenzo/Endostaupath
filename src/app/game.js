@@ -104,7 +104,7 @@ export class Game {
         this.isUpdatingRegion = true;
         
           // Aggiorna il "nuvolozzo" di voxel e carica i chunk solo dopo l'aggiornamento
-          await this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ)
+          this.chunkManager.updateVoxelWindow(newRegionX, newRegionY, newRegionZ)
                 .then(() => {
                     this.isUpdatingRegion = false;
                     this.lastRegion = { x: newRegionX, y: newRegionY, z: newRegionZ };
