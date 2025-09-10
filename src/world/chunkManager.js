@@ -312,7 +312,7 @@ export class ChunkManager {
   // this.voxelWindowUpdater = new Worker(...); // già creato altrove
 
   async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
-    console.log(`Aggiornamento finestra voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
+    console.log(`Aggiornamento finestra voxel.`);
 
     // 1) Inizializza voxelWindow alla prima chiamata
     if (!this.voxelWindow) {
