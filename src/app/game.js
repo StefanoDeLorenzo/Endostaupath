@@ -44,16 +44,16 @@ export class Game {
       z: currentRegionZ
     };
 
-    this.lastChunk = { x: -1, y: -1, z: -1 }; // Assicura che il primo chunk venga caricato
+    //this.lastChunk = { x: -1, y: -1, z: -1 }; // Assicura che il primo chunk venga caricato
     
     // Popola il "nuvolozzo" con le regioni iniziali
-    await this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
+    this.chunkManager.updateVoxelWindow(currentRegionX, currentRegionY, currentRegionZ);
     this.lastRegion = { x: currentRegionX, y: currentRegionY, z: currentRegionZ };
     
 
     // Caricamento iniziale di due regioni all'avvio
     //await this.chunkManager.loadRegionAndMeshAllChunks(0, 1, 0);
-    this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
+    //this.chunkManager.loadRegionAndMeshAllChunks(0, 0, 0);
     //await this.chunkManager.loadRegionAndMeshAllChunks(1, 0, 0);
     //await this.chunkManager.loadRegionAndMeshAllChunks(-1, 0, 0);
 
