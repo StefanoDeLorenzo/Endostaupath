@@ -40,32 +40,42 @@ self.onmessage = (event) => {
         const baseY = (dy + 1) * REGION_SPAN;
         const baseZ = (dz + 1) * REGION_SPAN;
 
-        if (!buffer) continue;
+        if (buffer && buffer.byteLength > 0) {
+          for (let cz = 0; cz < GRID; cz++) {
+            for (let cy = 0; cy < GRID; cy++) {
+              for (let cx = 0; cx < GRID; cx++) {
+                const chunkData = getCoreChunkDataFromRegionBuffer(buffer, cx, cy, cz);
+                const chunkBaseX = baseX + cx * CHUNK_SIZE;
+                const chunkBaseY = baseY + cy * CHUNK_SIZE;
+                const chunkBaseZ = baseZ + cz * CHUNK_SIZE;
 
-        for (let cx = 0; cx < GRID; cx++) {
-          for (let cy = 0; cy < GRID; cy++) {
-            for (let cz = 0; cz < GRID; cz++) {
-              const chunkData = getCoreChunkDataFromRegionBuffer(buffer, cx, cy, cz);
-              const chunkBaseX = baseX + cx * CHUNK_SIZE;
-              const chunkBaseY = baseY + cy * CHUNK_SIZE;
-              const chunkBaseZ = baseZ + cz * CHUNK_SIZE;
+                if (!chunkData) continue;
 
-              if (!chunkData) continue;
-
-              for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-                for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-                  for (let lz = 0; lz < CHUNK_SIZE; lz++) {
-                    const value = chunkData[voxelIndex(lx, ly, lz, CHUNK_SIZE)];
-                    if (value === 0) continue;
-                    const destIndex = voxelIndex(
-                      chunkBaseX + lx,
-                      chunkBaseY + ly,
-                      chunkBaseZ + lz,
-                      windowSpan
-                    );
-                    windowBuffer[destIndex] = value;
+                for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+                  for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+                    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+                      const value = chunkData[voxelIndex(lx, ly, lz, CHUNK_SIZE)];
+                      if (value === 0) continue;
+                      const destIndex = voxelIndex(
+                        chunkBaseX + lx,
+                        chunkBaseY + ly,
+                        chunkBaseZ + lz,
+                        windowSpan
+                      );
+                      windowBuffer[destIndex] = value;
+                    }
                   }
                 }
+              }
+            }
+          }
+        } else {
+          // region absent → fill its window slice with zeros
+          for (let z = 0; z < REGION_SPAN; z++) {
+            for (let y = 0; y < REGION_SPAN; y++) {
+              for (let x = 0; x < REGION_SPAN; x++) {
+                const dest = voxelIndex(baseX + x, baseY + y, baseZ + z, windowSpan);
+                windowBuffer[dest] = 0;
               }
             }
           }
