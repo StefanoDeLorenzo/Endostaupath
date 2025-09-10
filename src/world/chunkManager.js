@@ -311,6 +311,8 @@ export class ChunkManager {
 
   // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
   async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
+      console.log(`Sono nel metodo updateVoxelWindos per valorizzare la VW per ${newRegionX, newRegionY, newRegionZ} .`);
+
       // Rimuoviamo la promise locale, usiamo direttamente il ritorno della funzione
       return new Promise(async (resolve, reject) => {
           this.windowOrigin = {
