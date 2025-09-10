@@ -2,7 +2,8 @@
 
 import { REGION_SCHEMA } from '../world/config.js';
 
-const toLinearIndex = (x, y, z, size) => (x * size + y) * size + z;
+// Z-major, X-fast index (see axis convention table)
+const voxelIndex = (x, y, z, size) => x + y * size + z * size * size;
 
 function getCoreChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
   const dv = new DataView(buffer);
@@ -54,9 +55,9 @@ self.onmessage = (event) => {
               for (let lx = 0; lx < CHUNK_SIZE; lx++) {
                 for (let ly = 0; ly < CHUNK_SIZE; ly++) {
                   for (let lz = 0; lz < CHUNK_SIZE; lz++) {
-                    const value = chunkData[toLinearIndex(lx, ly, lz, CHUNK_SIZE)];
+                    const value = chunkData[voxelIndex(lx, ly, lz, CHUNK_SIZE)];
                     if (value === 0) continue;
-                    const destIndex = toLinearIndex(
+                    const destIndex = voxelIndex(
                       chunkBaseX + lx,
                       chunkBaseY + ly,
                       chunkBaseZ + lz,
