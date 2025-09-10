@@ -6,6 +6,7 @@ export class ChunkManager {
     this.scene = scene;
     this.shadowGenerator = shadowGenerator;
     this.worldLoader = null;
+    this.voxelWindowUpdater = null;
 
     // MODIFICA: Thread pool per la generazione della mesh
     this.workerPool = [];
@@ -25,6 +26,7 @@ export class ChunkManager {
 
     // MODIFICA: Inizializza il pool di worker
     this.initializeWorkerPool();
+    this.initializeVoxelWindowUpdater();
   }
 
   initializeWorkerPool() {
@@ -36,6 +38,9 @@ export class ChunkManager {
         // Collega un listener generico che gestisce i messaggi di tutti i worker
         worker.onmessage = this.onWorkerMessage.bind(this);
     }
+  }
+  initializeVoxelWindowUpdater() {
+    this.voxelWindowUpdater = new Worker(new URL('../worker/voxelWindowUpdater.js', import.meta.url), { type: 'module' });
   }
   // MODIFICA: Gestisce i messaggi in arrivo dai worker
   onWorkerMessage(event) {
@@ -306,55 +311,68 @@ export class ChunkManager {
 
   // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
   async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
-    console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
+      // Rimuoviamo la promise locale, usiamo direttamente il ritorno della funzione
+      return new Promise(async (resolve, reject) => {
+          this.windowOrigin = {
+              x: newRegionX - 1,
+              y: newRegionY - 1,
+              z: newRegionZ - 1
+          };
 
-    if (this.voxelWindow === null) {
-      const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
-      this.voxelWindow = new Uint8Array(WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN);
-    }
-    
-    const newWindowOrigin = {
-      x: newRegionX - 1,
-      y: newRegionY - 1,
-      z: newRegionZ - 1
-    };
+          const regionsToFetch = [];
+          const regionBuffers = {};
 
-    if (this.windowOrigin.x === newWindowOrigin.x &&
-        this.windowOrigin.y === newWindowOrigin.y &&
-        this.windowOrigin.z === newWindowOrigin.z) {
-      console.log('Nessun cambio di regione. Uscita da updateVoxelWindow.');
-      // Se non c'è un cambio, ritorna una Promise risolta immediatamente
-      return Promise.resolve();
-    }
+          for (let dx = -1; dx <= 1; dx++) {
+              for (let dy = -1; dy <= 1; dy++) {
+                  for (let dz = -1; dz <= 1; dz++) {
+                      const regionX = newRegionX + dx;
+                      const regionY = newRegionY + dy;
+                      const regionZ = newRegionZ + dz;
+                      const regionKey = `${regionX}_${regionY}_${regionZ}`;
 
-    this.windowOrigin = newWindowOrigin;
-    
-    const regionPromises = [];
-    for (let rx = -1; rx <= 1; rx++) {
-      for (let ry = -1; ry <= 1; ry++) {
-        for (let rz = -1; rz <= 1; rz++) {
-          const promise = this.worldLoader.fetchAndStoreRegionData(
-            newRegionX + rx,
-            newRegionY + ry,
-            newRegionZ + rz
-          );
-          regionPromises.push(promise);
-        }
-      }
-    }
+                      if (this.worldLoader.regionsData.has(regionKey)) {
+                          regionBuffers[regionKey] = this.worldLoader.regionsData.get(regionKey);
+                      } else {
+                          regionsToFetch.push(this.worldLoader.fetchAndStoreRegionData(regionX, regionY, regionZ));
+                      }
+                  }
+              }
+          }
 
-    const allRegionsLoaded = Promise.all(regionPromises);
+          await Promise.all(regionsToFetch);
 
-    // Attendi il completamento di tutte le chiamate durante il primo caricamento
-    if (this.isInitialLoad) {
-      console.log("ChunkManager: Attesa del caricamento iniziale delle regioni...");
-      await allRegionsLoaded;
-      this.isInitialLoad = false;
-      console.log("ChunkManager: Caricamento iniziale completato.");
-    }
+          for (let dx = -1; dx <= 1; dx++) {
+              for (let dy = -1; dy <= 1; dy++) {
+                  for (let dz = -1; dz <= 1; dz++) {
+                      const regionX = newRegionX + dx;
+                      const regionY = newRegionY + dy;
+                      const regionZ = newRegionZ + dz;
+                      const regionKey = `${regionX}_${regionY}_${regionZ}`;
+                      regionBuffers[regionKey] = this.worldLoader.regionsData.get(regionKey);
+                  }
+              }
+          }
 
-    // Restituisce la Promise combinata per gestire le chiamate anche successivamente
-    return allRegionsLoaded;
+          // Aggiunge un listener temporaneo per gestire la risposta
+          const listener = (event) => {
+              const { type, voxelWindow, windowOrigin } = event.data;
+              if (type === 'voxelWindowUpdated') {
+                  this.voxelWindow = new Uint8Array(voxelWindow);
+                  this.windowOrigin = windowOrigin;
+                  this.voxelWindowUpdater.removeEventListener('message', listener); // Rimuovi il listener
+                  resolve();
+              }
+          };
+
+          this.voxelWindowUpdater.addEventListener('message', listener);
+
+          const transferableBuffers = Object.values(regionBuffers);
+          this.voxelWindowUpdater.postMessage({
+              type: 'updateVoxelWindow',
+              regionBuffers,
+              windowOrigin: this.windowOrigin
+          }, transferableBuffers);
+      });
   }
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---
