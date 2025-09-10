@@ -15,7 +15,7 @@ export class Game {
     this.player = this.scene.activeCamera;
 
     this.chunkManager = new ChunkManager(this.scene, this.sceneInitializer.shadowGenerator);
-    this.worldLoader = new WorldLoader(this.chunkManager);
+    this.worldLoader = new WorldLoader();
 
     this.chunkManager.worldLoader = this.worldLoader;
 
