@@ -307,6 +307,12 @@ export class ChunkManager {
 
   // --- 1. Nuovo metodo per aggiornare il "nuvolozzo di voxel" ---
   async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
+    console.log(`Aggiornamento della finestra di voxel. Nuova regione: (${newRegionX}, ${newRegionY}, ${newRegionZ})`);
+
+    if (this.voxelWindow === null) {
+      const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
+      this.voxelWindow = new Uint8Array(WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN);
+    }
     const windowOrigin = {
       x: newRegionX - 1,
       y: newRegionY - 1,
