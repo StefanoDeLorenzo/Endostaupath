@@ -54,9 +54,9 @@ self.onmessage = (event) => {
 
   // Calcola l'offset della regione nella finestra 3×3×3
   // windowOrigin è l'angolo minimo (newRegion - 1)
-  const dx = rx - windowOrigin.x;  // ∈ {-1,0,+1}
-  const dy = ry - windowOrigin.y;
-  const dz = rz - windowOrigin.z;
+  const dx = rx - windowOrigin.x - 1;  // ∈ {-1,0,+1}
+  const dy = ry - windowOrigin.y - 1;
+  const dz = rz - windowOrigin.z - 1;
 
   const baseX = (dx + 1) * REGION_SPAN;
   const baseY = (dy + 1) * REGION_SPAN;
