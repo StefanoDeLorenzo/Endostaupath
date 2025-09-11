@@ -1,82 +1,87 @@
 // src/worker/voxelWindowUpdater.js
-
 import { REGION_SCHEMA } from '../world/config.js';
 
-// Z-major, X-fast index (see axis convention table)
+// Z-major, X-fast index
 const voxelIndex = (x, y, z, size) => x + y * size + z * size * size;
 
 function getCoreChunkDataFromRegionBuffer(buffer, chunkX, chunkY, chunkZ) {
   const dv = new DataView(buffer);
-  const headerSize = 11;
+  const HEADER_SIZE = 11;
   const GRID = REGION_SCHEMA.GRID;
+
+  // ⚠️ Verifica che l'ordine nel tuo header sia CX → CY → CZ
   const idx = ((chunkX * GRID) + chunkY) * GRID + chunkZ;
-  const off = headerSize + idx * 5;
-  const chunkFileOffset =
-    (dv.getUint8(off) << 16) | (dv.getUint8(off + 1) << 8) | dv.getUint8(off + 2);
+
+  const off = HEADER_SIZE + idx * 5;
+  const b0 = dv.getUint8(off), b1 = dv.getUint8(off + 1), b2 = dv.getUint8(off + 2);
+  const chunkFileOffset = (b0 << 16) | (b1 << 8) | b2; // 24-bit big-endian
   if (chunkFileOffset === 0) return null;
-  const size = REGION_SCHEMA.CHUNK_BYTES;
-  const chunkBuffer = buffer.slice(chunkFileOffset, chunkFileOffset + size);
-  return new Uint8Array(chunkBuffer);
+
+  const size = REGION_SCHEMA.CHUNK_BYTES; //  (CHUNK_SIZE ** 3) - senza shell
+  // Crea una view senza copiare i dati
+  return new Uint8Array(buffer, chunkFileOffset, size);
 }
 
 self.onmessage = (event) => {
-  const { type, regionBuffers, windowOrigin, id } = event.data;
-  if (type !== 'updateVoxelWindow') return;
+  const { type, regionBuffers, windowOrigin, id, sab } = event.data || {};
+  if (type !== 'copyRegionToSAB') return;
 
   const { GRID, CHUNK_SIZE, REGION_SPAN } = REGION_SCHEMA;
-  const windowSpan = 3 * REGION_SPAN;
-  const windowBuffer = new Uint8Array(windowSpan ** 3);
+  const WINDOW_SPAN = 3 * REGION_SPAN;
 
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dz = -1; dz <= 1; dz++) {
-        const regionX = windowOrigin.x + dx;
-        const regionY = windowOrigin.y + dy;
-        const regionZ = windowOrigin.z + dz;
-        const regionKey = `${regionX}_${regionY}_${regionZ}`;
-        const buffer = regionBuffers[regionKey];
+  // Finestra condivisa
+  const dst = new Uint8Array(sab);
 
-        const baseX = (dx + 1) * REGION_SPAN;
-        const baseY = (dy + 1) * REGION_SPAN;
-        const baseZ = (dz + 1) * REGION_SPAN;
+  // --- Estrai l'unica regione presente ---
+  const keys = regionBuffers ? Object.keys(regionBuffers) : [];
+  if (keys.length !== 1) {
+    self.postMessage({ type: 'regionSliceDone', id });
+    return;
+  }
 
-        if (buffer && buffer.byteLength > 0) {
-          for (let cz = 0; cz < GRID; cz++) {
-            for (let cy = 0; cy < GRID; cy++) {
-              for (let cx = 0; cx < GRID; cx++) {
-                const chunkData = getCoreChunkDataFromRegionBuffer(regionBuffers, cx, cy, cz);
-                const chunkBaseX = baseX + cx * CHUNK_SIZE;
-                const chunkBaseY = baseY + cy * CHUNK_SIZE;
-                const chunkBaseZ = baseZ + cz * CHUNK_SIZE;
+  const regionKey = keys[0];
+  const regionBuffer = regionBuffers[regionKey]; // ArrayBuffer | null
 
-                if (!chunkData) continue;
+  // Se la regione non esiste: non scrivere nulla (il main ha già azzerato la finestra)
+  if (!regionBuffer || regionBuffer.byteLength === 0) {
+    self.postMessage({ type: 'regionSliceDone', id });
+    return;
+  }
 
-                for (let lz = 0; lz < CHUNK_SIZE; lz++) {
-                  for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-                    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-                      const value = chunkData[voxelIndex(lx, ly, lz, CHUNK_SIZE)];
-                      if (value === 0) continue;
-                      const destIndex = voxelIndex(
-                        chunkBaseX + lx,
-                        chunkBaseY + ly,
-                        chunkBaseZ + lz,
-                        windowSpan
-                      );
-                      windowBuffer[destIndex] = value;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } else {
-          // region absent → fill its window slice with zeros
-          for (let z = 0; z < REGION_SPAN; z++) {
-            for (let y = 0; y < REGION_SPAN; y++) {
-              for (let x = 0; x < REGION_SPAN; x++) {
-                const dest = voxelIndex(baseX + x, baseY + y, baseZ + z, windowSpan);
-                windowBuffer[dest] = 0;
-              }
+  // Ricava le coord della regione dalla chiave "<rx>_<ry>_<rz>"
+  const [rxStr, ryStr, rzStr] = regionKey.split('_');
+  const rx = parseInt(rxStr, 10), ry = parseInt(ryStr, 10), rz = parseInt(rzStr, 10);
+
+  // Calcola l'offset della regione nella finestra 3×3×3
+  // windowOrigin è l'angolo minimo (newRegion - 1)
+  const dx = rx - windowOrigin.x;  // ∈ {-1,0,+1}
+  const dy = ry - windowOrigin.y;
+  const dz = rz - windowOrigin.z;
+
+  const baseX = (dx + 1) * REGION_SPAN;
+  const baseY = (dy + 1) * REGION_SPAN;
+  const baseZ = (dz + 1) * REGION_SPAN;
+
+  // --- Copia CHUNK → SAB (solo per questa regione) ---
+  for (let cz = 0; cz < GRID; cz++) {
+    for (let cy = 0; cy < GRID; cy++) {
+      for (let cx = 0; cx < GRID; cx++) {
+        const chunk = getCoreChunkDataFromRegionBuffer(regionBuffer, cx, cy, cz);
+        if (!chunk) continue;
+
+        const chunkBaseX = baseX + cx * CHUNK_SIZE;
+        const chunkBaseY = baseY + cy * CHUNK_SIZE;
+        const chunkBaseZ = baseZ + cz * CHUNK_SIZE;
+
+        // copia voxel (Z-major, X-fast)
+        for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+          for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+            let src = voxelIndex(0, ly, lz, CHUNK_SIZE);                          // inizio riga X
+            let di  = voxelIndex(chunkBaseX, chunkBaseY + ly, chunkBaseZ + lz, WINDOW_SPAN);
+            for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+              const v = chunk[src++];
+              if (v) dst[di] = v; // scrivi solo se non zero (aria)
+              di++;               // X-fast
             }
           }
         }
@@ -84,10 +89,7 @@ self.onmessage = (event) => {
     }
   }
 
-  self.postMessage(
-    { type: 'voxelWindowUpdated', id, voxelWindow: windowBuffer.buffer, windowOrigin },
-    [windowBuffer.buffer]
-  );
+  self.postMessage({ type: 'regionSliceDone', id });
 };
 
 export {};

@@ -307,108 +307,125 @@ export class ChunkManager {
         }
     }
 
-  // campi suggeriti nel costruttore della classe:
-  // this.isInitialLoad = true;
-  // this.windowOrigin = { x: Infinity, y: Infinity, z: Infinity };
-  // this._voxelWindowOpId = 0;                 // per gestire risposte fuori ordine
-  // this.voxelWindowUpdater = new Worker(...); // già creato altrove
+// Assicurati in ctor:
+// this.isInitialLoad = true;
+// this.windowOrigin = { x: Infinity, y: Infinity, z: Infinity };
+// this._voxelWindowOpId = 0;
 
-  async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
-    console.log(`Aggiornamento finestra voxel.`);
+async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
+  console.log('Aggiornamento finestra voxel.');
 
-    // 1) Inizializza voxelWindow alla prima chiamata
-    if (!this.voxelWindow) {
-      const WINDOW_VOXEL_SPAN = 3 * REGION_SCHEMA.REGION_SPAN;
-      this.voxelWindow = new Uint8Array(WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN * WINDOW_VOXEL_SPAN);
-    }
+  const WINDOW_SPAN  = 3 * REGION_SCHEMA.REGION_SPAN;
+  const WINDOW_BYTES = WINDOW_SPAN * WINDOW_SPAN * WINDOW_SPAN;
 
-    // 2) Calcola l'origine della finestra 3×3×3 attorno alla nuova regione
-    const newWindowOrigin = {
-      x: newRegionX - 1,
-      y: newRegionY - 1,
-      z: newRegionZ - 1
-    };
+  // 1) Inizializza la finestra come SharedArrayBuffer la prima volta
+  if (!this.voxelWindow || !(this.voxelWindow.buffer instanceof SharedArrayBuffer)) {
+    const sab = new SharedArrayBuffer(WINDOW_BYTES);
+    this.voxelWindow = new Uint8Array(sab);
+  }
 
-    // 3) Se la finestra non cambia, non fare nulla
-    if (
-      this.windowOrigin &&
-      this.windowOrigin.x === newWindowOrigin.x &&
-      this.windowOrigin.y === newWindowOrigin.y &&
-      this.windowOrigin.z === newWindowOrigin.z
-    ) {
-      console.log('Nessun cambio di finestra. Esco da updateVoxelWindow.');
-      return Promise.resolve(); // compatibile con il tuo .then(...)
-    }
+  // 2) Calcola l'origine minima della finestra 3×3×3
+  const newWindowOrigin = {
+    x: newRegionX - 1,
+    y: newRegionY - 1,
+    z: newRegionZ - 1,
+  };
 
-    // Aggiorna l’origine
-    this.windowOrigin = newWindowOrigin;
+  // 3) Se la finestra non cambia, non fare nulla
+  if (
+    this.windowOrigin &&
+    this.windowOrigin.x === newWindowOrigin.x &&
+    this.windowOrigin.y === newWindowOrigin.y &&
+    this.windowOrigin.z === newWindowOrigin.z
+  ) {
+    console.log('Nessun cambio di finestra. Esco da updateVoxelWindow.');
+    return Promise.resolve();
+  }
 
-    // 4) Assicurati che tutte le 27 regioni siano presenti (fetch -1..1)
-    const regionPromises = [];
-    const keys = []; // memorizzo l'ordine dei 27 key per ricostruire i buffer
-    for (let rx = -1; rx <= 1; rx++) {
-      for (let ry = -1; ry <= 1; ry++) {
-        for (let rz = -1; rz <= 1; rz++) {
-          const R = { x: newRegionX + rx, y: newRegionY + ry, z: newRegionZ + rz };
-          const key = `${R.x}_${R.y}_${R.z}`;
-          keys.push(key);
-          // se non c'è già in cache, fetch; altrimenti Promise risolta
-          if (!this.worldLoader.regionsData.has(key)) {
-            regionPromises.push(this.worldLoader.fetchAndStoreRegionData(R.x, R.y, R.z));
-          }
+  // Aggiorna l'origine
+  this.windowOrigin = newWindowOrigin;
+
+  // 4) Assicurati che le 27 regioni siano in cache
+  const regionFetches = [];
+  for (let rx = -1; rx <= 1; rx++) {
+    for (let ry = -1; ry <= 1; ry++) {
+      for (let rz = -1; rz <= 1; rz++) {
+        const R = { x: newRegionX + rx, y: newRegionY + ry, z: newRegionZ + rz };
+        const key = `${R.x}_${R.y}_${R.z}`;
+        if (!this.worldLoader.regionsData.has(key)) {
+          regionFetches.push(this.worldLoader.fetchAndStoreRegionData(R.x, R.y, R.z));
         }
       }
     }
-
-    // Attendo che i fetch mancanti finiscano: serve per avere i buffer da passare al worker
-    await Promise.all(regionPromises);
-
-    // Primo caricamento: fai sapere al chiamante che hai davvero finito i fetch
-    if (this.isInitialLoad) {
-      console.log('ChunkManager: caricamento iniziale delle regioni completato.');
-      this.isInitialLoad = false;
-    }
-
-    // 5) Prepara i buffer regione da inviare al worker (27 voci)
-    //    NB: NON uso transfer list sui buffer delle regioni, così restano in cache.
-    const regionBuffers = [];
-    for (const key of keys) {
-      const buf = this.worldLoader.regionsData.get(key) || null; // se mancante → null (il worker riempirà di 0)
-      regionBuffers.push({ key, buffer: buf });
-    }
-
-    // 6) Invoca il worker per comporre la voxelWindow
-    const reqId = ++this._voxelWindowOpId;
-
-    return new Promise((resolve, reject) => {
-      const onMessage = (event) => {
-        const { type, id, voxelWindow, error } = event.data || {};
-
-        // Ignora risposte vecchie (se l’utente si muove velocemente e parte un’altra richiesta)
-        if (id !== reqId) return;
-
-        if (type === 'voxelWindowUpdated') {
-          this.voxelWindow = new Uint8Array(voxelWindow); // risultato pronto (puoi anche fare .set se vuoi riusare il buffer)
-          this.voxelWindowUpdater.removeEventListener('message', onMessage);
-          resolve();
-        } else if (type === 'voxelWindowError') {
-          this.voxelWindowUpdater.removeEventListener('message', onMessage);
-          reject(new Error(error || 'voxelWindowUpdater error'));
-        }
-      };
-
-      this.voxelWindowUpdater.addEventListener('message', onMessage);
-
-      // Dati minimi che il worker si aspetta
-      this.voxelWindowUpdater.postMessage({
-        type: 'updateVoxelWindow',
-        id: reqId,
-        regionBuffers,                // [{ key, buffer: ArrayBuffer|null }, ...]
-        windowOrigin: this.windowOrigin // {x,y,z} region-coords della finestra (angolo minimo)
-        
-      });
-    });
   }
+  await Promise.all(regionFetches);
+
+  if (this.isInitialLoad) {
+    console.log('ChunkManager: caricamento iniziale delle regioni completato.');
+    this.isInitialLoad = false;
+  }
+
+  // 5) Azzerare la finestra condivisa (regioni assenti restano aria)
+  this.voxelWindow.fill(0);
+
+  // 6) Lancia 27 worker: ciascuno riceve SOLO il buffer della sua regione
+  const opId = ++this._voxelWindowOpId;
+  const sab = this.voxelWindow.buffer; // SharedArrayBuffer
+  const tasks = [];
+  let seq = 0;
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const rx = this.windowOrigin.x + dx;
+        const ry = this.windowOrigin.y + dy;
+        const rz = this.windowOrigin.z + dz;
+
+        const regionKey = `${rx}_${ry}_${rz}`;
+        const buffer = this.worldLoader.regionsData.get(regionKey) || null; // può essere null
+
+        tasks.push(new Promise((resolve, reject) => {
+          const worker = new Worker(new URL('../worker/voxelWindowUpdater.js', import.meta.url), { type: 'module' });
+          const id = (opId << 8) | (seq & 0xff); // id univoco per questa richiesta+worker
+          seq++;
+
+          const onMessage = (event) => {
+            const { type, id: respId, error } = event.data || {};
+            if (respId !== id) return; // ignora messaggi di altre richieste
+            worker.removeEventListener('message', onMessage);
+            worker.terminate();
+
+            if (type === 'regionSliceDone') return resolve();
+            if (type === 'voxelWindowError') return reject(new Error(error || 'voxelWindow worker error'));
+            // fallback: risolvi comunque
+            resolve();
+          };
+
+          worker.addEventListener('message', onMessage);
+
+          // Una sola entry: la regione di competenza di questo worker
+          const regionBuffers = { [regionKey]: buffer };
+
+          worker.postMessage({
+            type: 'copyRegionToSAB',
+            id,
+            regionBuffers,             // { "<rx>_<ry>_<rz>": ArrayBuffer|null } (una sola chiave)
+            windowOrigin: this.windowOrigin, // origine minima della finestra 3×3×3
+            sab,                       // SharedArrayBuffer su cui scrivere
+          }/*, buffer ? [buffer] : undefined */);
+        }));
+      }
+    }
+  }
+
+  // 7) Attendi tutti i worker
+  await Promise.all(tasks);
+
+  // A questo punto this.voxelWindow (SAB) è completa
+  return;
+}
+
+
 
   // --- 2. Metodo per ottenere i dati del chunk con la shell virtuale ---
   // Aggiungilo a chunkManager.js
