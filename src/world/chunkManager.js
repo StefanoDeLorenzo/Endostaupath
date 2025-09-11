@@ -377,9 +377,9 @@ async updateVoxelWindow(newRegionX, newRegionY, newRegionZ) {
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dz = -1; dz <= 1; dz++) {
-        const rx = this.windowOrigin.x + dx;
-        const ry = this.windowOrigin.y + dy;
-        const rz = this.windowOrigin.z + dz;
+        const rx = newRegionX + dx;
+        const ry = newRegionY + dy;
+        const rz = newRegionZ + dz;
 
         const regionKey = `${rx}_${ry}_${rz}`;
         const buffer = this.worldLoader.regionsData.get(regionKey) || null; // può essere null
